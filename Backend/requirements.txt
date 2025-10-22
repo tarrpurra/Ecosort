@@ -1,0 +1,39 @@
+# --- Core Backend ---
+fastapi==0.115.0
+uvicorn[standard]==0.30.1
+
+# --- Database ---
+SQLAlchemy==2.0.32
+psycopg2-binary==2.9.9     # For PostgreSQL
+pymongo==4.8.0             # For MongoDB Atlas
+geoalchemy2==0.15.2        # For PostGIS geospatial support
+
+# --- AI / Machine Learning ---
+torch==2.4.1
+torchvision==0.19.1
+transformers==4.44.2       # Hugging Face models
+scikit-learn==1.5.1
+numpy==1.26.4
+pandas==2.2.2
+
+# --- Image Processing / AR Support ---
+opencv-python==4.10.0.84
+Pillow==10.4.0
+
+#image_detetction
+ultralytics
+
+# --- Cloud & APIs ---
+requests==2.32.3
+googlemaps==4.10.0         # For recycling centers locator (Maps API)
+firebase-admin==6.5.0      # Firebase Auth + FCM
+
+# --- Auth ---
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1  # pin for passlib compatibility; avoid 4.1+ which removes __about__
+
+# --- Utils ---
+python-dotenv==1.0.1
+pydantic==2.9.2
+loguru==0.7.2
