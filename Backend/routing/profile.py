@@ -10,7 +10,7 @@ from pydantic import BaseModel
 import os
 
 security = HTTPBearer()
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-here")
+SECRET_KEY = os.getenv("SECRET_KEY", "f704a7f4598c84ca47963e8b262b0e50665883541fe4f59cfc3e18e15326e760a9f56d02cee75a321539c7ec2389a6810af09ea1c5211e88d381f9ba9fe12865")
 ALGORITHM = "HS256"
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -68,11 +68,15 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
             raise HTTPException(status_code=401, detail="Invalid authentication credentials")
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid authentication credentials")
-    
+
     user = db.query(User).filter(User.id == int(user_id)).first()
     if user is None:
         raise HTTPException(status_code=401, detail="User not found")
     return user
+
+def is_profile_complete(user: User) -> bool:
+    """Check if user has completed their profile (first_name, last_name, address)"""
+    return bool(user.first_name and user.last_name and user.address)
 
 # Update own profile (authenticated)
 class UpdateProfileRequest(BaseModel):
@@ -80,6 +84,13 @@ class UpdateProfileRequest(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
     address: str | None = None
+
+# Complete profile (for new users or users with missing information)
+class CompleteProfileRequest(BaseModel):
+    first_name: str
+    last_name: str
+    address: str
+    name: str | None = None
 
 @router.put("/profile", status_code=status.HTTP_200_OK)
 def update_my_profile(
@@ -139,6 +150,52 @@ def get_profile(current_user: User = Depends(get_current_user)):
         "co2_saved": 0.0,  # TODO: calculate from impacts table
         "level": "Beginner",  # TODO: implement leveling system
         "created_at": str(current_user.created_at)
+    }
+
+@router.post("/complete-profile")
+def complete_profile(
+    profile_data: CompleteProfileRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Complete user profile with required information"""
+    # Update user profile
+    current_user.first_name = profile_data.first_name
+    current_user.last_name = profile_data.last_name
+    current_user.address = profile_data.address
+
+    if profile_data.name:
+        current_user.name = profile_data.name
+
+    db.commit()
+    db.refresh(current_user)
+
+    return {
+        "message": "Profile completed successfully",
+        "profile_complete": True,
+        "user": {
+            "id": current_user.id,
+            "email": current_user.email,
+            "name": current_user.name,
+            "first_name": current_user.first_name,
+            "last_name": current_user.last_name,
+            "address": current_user.address,
+            "created_at": str(current_user.created_at)
+        }
+    }
+
+@router.get("/check-profile-status")
+def check_profile_status(current_user: User = Depends(get_current_user)):
+    """Check if current user's profile is complete"""
+    return {
+        "profile_complete": is_profile_complete(current_user),
+        "missing_fields": [
+            field for field, value in [
+                ("first_name", current_user.first_name),
+                ("last_name", current_user.last_name),
+                ("address", current_user.address)
+            ] if not value
+        ]
     }
 
 @router.post("/insert_profile_data", status_code=status.HTTP_201_CREATED)

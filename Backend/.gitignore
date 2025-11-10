@@ -3,3 +3,6 @@ myenv
 venv
 ecosort.db
 .env
+Test.jpg
+__pycache__/
+yolo_dataset/

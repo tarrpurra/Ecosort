@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
+import { apiService } from '../../utils/api';
 
 const { width } = Dimensions.get('window');
 
@@ -112,7 +113,7 @@ const Home = () => {
               <Text style={styles.actionButtonText}>Guide</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => router.push('/explore')}
+              onPress={() => router.push('/guide')}
               style={styles.actionButton}
             >
               <Ionicons name="location" size={20} color={colors.secondary} />

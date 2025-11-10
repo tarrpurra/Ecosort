@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Alert, ScrollView } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { apiService } from '../utils/api'
+import { apiService } from '../utils/api';
+import { useAuth } from '../context/auth-context';
 
 export default function AuthScreen() {
   const { mode } = useLocalSearchParams();
@@ -11,6 +12,7 @@ export default function AuthScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const router = useRouter();
+  const { login } = useAuth();
 
   const handleSubmit = async () => {
     if (!email || !password) {
@@ -30,13 +32,15 @@ export default function AuthScreen() {
         response = await apiService.signup({ email, password, name: email.split('@')[0] }); // Simple name extraction
       }
 
-      // Store token
-      apiService.setToken(response.access_token);
+      // Store token and update auth context
+      await login(response.access_token);
 
       Alert.alert('Success', isLogin ? 'Logged in successfully' : 'Account created successfully');
+
+      // After login or signup, always go to tabs - profile completion check happens there
       router.replace('/(tabs)');
     } catch (error) {
-      Alert.alert('Error', error.message || 'Authentication failed');
+      Alert.alert('Error','Authentication failed');
     }
   };
 

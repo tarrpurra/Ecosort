@@ -22,6 +22,8 @@ class User(Base):
     address = Column(String)
     email = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
+    reset_token = Column(String(255), nullable=True)
+    reset_token_expires = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     scans = relationship("Scan", back_populates="user", cascade="all, delete-orphan")

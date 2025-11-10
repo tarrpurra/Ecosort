@@ -7,6 +7,10 @@ from pydantic import BaseModel
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 import os
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import secrets
 
 router = APIRouter()
 
@@ -32,6 +36,19 @@ class SignupRequest(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str
+    profile_complete: bool
+    user_id: int
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
 
 def get_db():
     db = SessionLocal()
@@ -63,7 +80,58 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-@router.post("/login", response_model=Token)
+def is_profile_complete(user: User) -> bool:
+    """Check if user has completed their profile (first_name, last_name, address)"""
+    return bool(user.first_name and user.last_name and user.address)
+
+def send_reset_email(email: str, reset_token: str):
+    """Send password reset email using smtplib"""
+    # For demo purposes, using a simple SMTP setup
+    # In production, use a proper email service like SendGrid, Mailgun, etc.
+
+    sender_email = os.getenv("SMTP_EMAIL", "noreply@ecosort.com")
+    sender_password = os.getenv("SMTP_PASSWORD", "")
+    smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+
+    msg = MIMEMultipart()
+    msg['From'] = sender_email
+    msg['To'] = email
+    msg['Subject'] = "EcoSort - Password Reset"
+
+    reset_link = f"https://yourapp.com/reset-password?token={reset_token}"
+
+    body = f"""
+    Hi,
+
+    You requested a password reset for your EcoSort account.
+
+    Click the link below to reset your password:
+    {reset_link}
+
+    This link will expire in 1 hour.
+
+    If you didn't request this reset, please ignore this email.
+
+    Best,
+    EcoSort Team
+    """
+
+    msg.attach(MIMEText(body, 'plain'))
+
+    try:
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        text = msg.as_string()
+        server.sendmail(sender_email, email, text)
+        server.quit()
+        return True
+    except Exception as e:
+        print(f"Email sending failed: {e}")
+        return False
+
+@router.post("/login", response_model=LoginResponse)
 async def login(request: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == request.email).first()
     if not user or not verify_password(request.password, user.password_hash):
@@ -76,7 +144,15 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     access_token = create_access_token(
         data={"sub": str(user.id)}, expires_delta=access_token_expires
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+
+    profile_complete = is_profile_complete(user)
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "profile_complete": profile_complete,
+        "user_id": user.id
+    }
 
 @router.post("/signup", response_model=Token)
 async def signup(request: SignupRequest, db: Session = Depends(get_db)):
@@ -108,3 +184,49 @@ async def signup(request: SignupRequest, db: Session = Depends(get_db)):
         data={"sub": str(db_user.id)}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
+@router.post("/forgot-password")
+async def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == request.email).first()
+    if not user:
+        # Don't reveal if email exists or not for security
+        return {"message": "If an account with this email exists, a reset link has been sent."}
+
+    # Generate reset token
+    reset_token = secrets.token_urlsafe(32)
+    reset_token_expires = datetime.utcnow() + timedelta(hours=1)
+
+    # Update user with reset token
+    user.reset_token = reset_token
+    user.reset_token_expires = reset_token_expires
+    db.commit()
+
+    # Send email
+    if send_reset_email(user.email, reset_token):
+        return {"message": "Password reset instructions sent to your email"}
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to send reset email"
+        )
+
+@router.post("/reset-password")
+async def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(
+        User.reset_token == request.token,
+        User.reset_token_expires > datetime.utcnow()
+    ).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token"
+        )
+
+    # Update password
+    user.password_hash = get_password_hash(request.new_password)
+    user.reset_token = None
+    user.reset_token_expires = None
+    db.commit()
+
+    return {"message": "Password reset successfully"}

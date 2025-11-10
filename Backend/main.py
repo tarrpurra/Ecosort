@@ -3,9 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from routing.auth import router as auth_router
 from routing.profile import router as profile_router
 from routing.Recycle_center import router as recycle_router
+from routing.classify import router as classify_router
 from model.connect import engine
 from model.model import Base
 from dotenv import load_dotenv
+from sqlalchemy import text
 import uvicorn
 
 # Load environment from .env
@@ -18,8 +20,18 @@ Base.metadata.create_all(bind=engine)
 def ensure_user_columns():
     try:
         with engine.connect() as conn:
-            res = conn.execute("PRAGMA table_info(users);")
+            # First ensure the users table exists by creating it if needed
+            res = conn.execute(text("PRAGMA table_info(users);"))
             cols = {row[1] for row in res}
+
+            # If no columns found, table doesn't exist - create it first
+            if not cols:
+                print("Users table not found, creating it...")
+                Base.metadata.create_all(bind=engine)
+                # Re-check columns after creation
+                res = conn.execute(text("PRAGMA table_info(users);"))
+                cols = {row[1] for row in res}
+
             alter_stmts = []
             if "first_name" not in cols:
                 alter_stmts.append("ALTER TABLE users ADD COLUMN first_name VARCHAR(120);")
@@ -27,8 +39,22 @@ def ensure_user_columns():
                 alter_stmts.append("ALTER TABLE users ADD COLUMN last_name VARCHAR(120);")
             if "address" not in cols:
                 alter_stmts.append("ALTER TABLE users ADD COLUMN address VARCHAR;")
+            if "reset_token" not in cols:
+                alter_stmts.append("ALTER TABLE users ADD COLUMN reset_token VARCHAR(255);")
+            if "reset_token_expires" not in cols:
+                alter_stmts.append("ALTER TABLE users ADD COLUMN reset_token_expires DATETIME;")
+
+            # Execute all ALTER statements
             for stmt in alter_stmts:
-                conn.execute(stmt)
+                print(f"Executing: {stmt}")
+                conn.execute(text(stmt))
+                conn.commit()
+
+            if alter_stmts:
+                print(f"Successfully added {len(alter_stmts)} missing columns to users table")
+            else:
+                print("All required columns already exist in users table")
+
     except Exception as e:
         # Intentionally avoid raising to not block startup
         print(f"User columns migration skipped/failed: {e}")
@@ -41,8 +67,8 @@ app = FastAPI(title="EcoSort API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://a79947e6e0a5.ngrok-free.app ",
-        "http://a79947e6e0a5.ngrok-free.app ",
+        "https://02812eb94604.ngrok-free.app",
+        "http://02812eb94604.ngrok-free.app",
         "http://localhost:8081",
         "http://127.0.0.1:8081",
         "http://localhost:19006",
@@ -55,8 +81,9 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
-app.include_router(profile_router, tags=["Profile"])
+app.include_router(profile_router, prefix="/profile", tags=["Profile"])
 app.include_router(recycle_router, prefix="/recycle", tags=["Recycling Centers"])
+app.include_router(classify_router, prefix="/recycle", tags=["Classification"])
 
 @app.get("/health")
 async def health_check():
