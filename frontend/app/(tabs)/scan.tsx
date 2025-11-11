@@ -1,4 +1,4 @@
-import eact, { useState, useRef, useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -14,30 +14,43 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
-// Note: For gradient effect, install expo-linear-gradient:
-// npm install expo-linear-gradient
-// Then uncomment the import below:
-// import { LinearGradient } from "expo-linear-gradient";
 import { apiService } from "../../utils/api";
 
 const { width, height } = Dimensions.get("window");
+const RETICLE_SIZE = Math.min(width * 0.78, height * 0.52);
+const RETICLE_CORNERS = [
+  "topLeft",
+  "topRight",
+  "bottomLeft",
+  "bottomRight",
+] as const;
 
-const colors = {
-  gradientMint: ["#22c55e", "#16a34a"],
-  gradientSky: ["#0ea5e9", "#0284c7"],
-  primary: "#22c55e",
-  primaryDark: "#16a34a",
-  secondary: "#10b981",
-  success: "#22c55e",
-  error: "#ef4444",
-  background: "#f8fafc",
-  surface: "#ffffff",
-  text: "#1e293b",
-  textSecondary: "#64748b",
-  textWhite: "#ffffff",
-  border: "#e2e8f0",
-  shadow: "#000000",
-  cardBackground: "#f1f5f9",
+const palette = {
+  backdrop: "#020617",
+  surface: "#0f172a",
+  card: "rgba(15, 23, 42, 0.92)",
+  accent: "#22c55e",
+  accentSoft: "#34d399",
+  accentAlt: "#38bdf8",
+  warning: "#f97316",
+  danger: "#ef4444",
+  textPrimary: "#f8fafc",
+  textSecondary: "rgba(226, 232, 240, 0.76)",
+  textMuted: "rgba(148, 163, 184, 0.9)",
+  glassBorder: "rgba(148, 163, 184, 0.25)",
+  cameraMask: "rgba(2, 6, 23, 0.45)",
+};
+
+type ScanResult = {
+  item: string;
+  recyclable: boolean;
+  confidence: number;
+  instructions: string;
+  impact: string;
+  category: string;
+  bbox?: number[];
+  fallback_model?: string;
+  image_path?: string;
 };
 
 const Scan = () => {
@@ -45,13 +58,14 @@ const Scan = () => {
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
   const [isScanning, setIsScanning] = useState(false);
-  const [scannedItem, setScannedItem] = useState<any>(null);
-  const [showOverlays, setShowOverlays] = useState(false);
+  const [scannedItem, setScannedItem] = useState<ScanResult | null>(null);
+  const [showOverlays, setShowOverlays] = useState(true);
+  const [torchEnabled, setTorchEnabled] = useState(false);
+  const [facing, setFacing] = useState<"back" | "front">("back");
 
-  // Snapchat-like animations
   const scanPulseAnim = useRef(new Animated.Value(1)).current;
-  const resultSlideAnim = useRef(new Animated.Value(height)).current;
-  const overlayFadeAnim = useRef(new Animated.Value(0)).current;
+  const scanLineAnim = useRef(new Animated.Value(0)).current;
+  const resultSheetAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (permission && !permission.granted) {
@@ -59,50 +73,58 @@ const Scan = () => {
     }
   }, [permission, requestPermission]);
 
-  // Pulse animation for scan button
   useEffect(() => {
     const pulseAnimation = Animated.loop(
       Animated.sequence([
         Animated.timing(scanPulseAnim, {
-          toValue: 1.1,
-          duration: 1000,
+          toValue: 1.08,
+          duration: 1200,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
         Animated.timing(scanPulseAnim, {
           toValue: 1,
-          duration: 1000,
+          duration: 1200,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
       ])
     );
+
     pulseAnimation.start();
     return () => pulseAnimation.stop();
   }, [scanPulseAnim]);
 
-  // Slide in result animation
   useEffect(() => {
-    if (scannedItem) {
-      Animated.parallel([
-        Animated.timing(resultSlideAnim, {
-          toValue: 0,
-          duration: 500,
-          easing: Easing.out(Easing.back(1.7)),
-          useNativeDriver: true,
-        }),
-        Animated.timing(overlayFadeAnim, {
+    const lineAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(scanLineAnim, {
           toValue: 1,
-          duration: 300,
+          duration: 2000,
+          easing: Easing.inOut(Easing.quad),
           useNativeDriver: true,
         }),
-      ]).start();
-    } else {
-      resultSlideAnim.setValue(height);
-      overlayFadeAnim.setValue(0);
-    }
-  }, [scannedItem, resultSlideAnim, overlayFadeAnim]);
+        Animated.timing(scanLineAnim, {
+          toValue: 0,
+          duration: 2000,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
 
+    lineAnimation.start();
+    return () => lineAnimation.stop();
+  }, [scanLineAnim]);
+
+  useEffect(() => {
+    Animated.timing(resultSheetAnim, {
+      toValue: scannedItem ? 1 : 0,
+      duration: 360,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: true,
+    }).start();
+  }, [scannedItem, resultSheetAnim]);
 
   const handleScan = async () => {
     if (!permission?.granted) {
@@ -119,6 +141,7 @@ const Scan = () => {
     }
 
     setIsScanning(true);
+    setScannedItem(null);
 
     try {
       const photo = await cameraRef.current.takePictureAsync({
@@ -126,25 +149,24 @@ const Scan = () => {
         quality: 0.7,
       });
 
-      // Send to API
       const response = await apiService.classifyItem(photo.base64!);
 
-      // Format response to match expected structure
-      const result = {
+      const result: ScanResult = {
         item: response.item_type,
         recyclable: response.recyclable,
         confidence: Math.round(response.confidence * 100),
         instructions: response.recyclable
-          ? "This item is recyclable. Please clean it and place in the appropriate recycling bin."
-          : "This item is not recyclable. Please dispose of it properly in regular waste.",
+          ? "Clean the item and place it into your recycling bin."
+          : "Dispose of this item in general waste to avoid contamination.",
         impact: `Saves ${response.co2_impact}kg CO₂`,
         category: response.item_type,
-        bbox: response.bbox, // Add bounding box for AR overlay
-        fallback_model: response.fallback_model, // Indicate if fallback model was used
-        image_path: response.image_path || "", // Path to stored image
+        bbox: response.bbox,
+        fallback_model: response.fallback_model,
+        image_path: response.image_path || "",
       };
 
       setScannedItem(result);
+      setShowOverlays(true);
     } catch (error) {
       console.error("Scan error:", error);
       const errorMessage =
@@ -161,800 +183,904 @@ const Scan = () => {
   const handleRescan = () => {
     setScannedItem(null);
     setIsScanning(false);
-    setShowOverlays(false);
+    setShowOverlays(true);
   };
 
   const toggleOverlays = () => {
-    setShowOverlays(!showOverlays);
+    setShowOverlays((prev) => !prev);
   };
 
+  const toggleTorch = () => {
+    setTorchEnabled((prev) => !prev);
+  };
+
+  const toggleFacing = () => {
+    setFacing((prev) => (prev === "back" ? "front" : "back"));
+  };
+
+  const scanLineTranslate = scanLineAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, RETICLE_SIZE - 20],
+  });
+
+  const resultTranslate = resultSheetAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [200, 0],
+  });
+
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: "#D2EBDA" }]}>
-      <View style={styles.mainContainer}>
-        {/* Compact Header */}
-        <View style={[styles.compactHeader, { backgroundColor: colors.primary }]}>
-          <View style={styles.headerContent}>
-            <TouchableOpacity
-              onPress={() => router.back()}
-              style={styles.backButton}
-            >
-              <Ionicons name="arrow-back" size={24} color={colors.textWhite} />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>AI Scanner</Text>
-            <TouchableOpacity
-              onPress={toggleOverlays}
-              style={styles.overlayToggle}
-            >
-              <Ionicons
-                name={showOverlays ? "eye-off" : "eye"}
-                size={20}
-                color={colors.textWhite}
-              />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Full-Screen Camera */}
-        <View style={styles.cameraContainer}>
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={toggleOverlays}
-            style={styles.cameraTouchable}
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.cameraShell}>
+        {permission?.granted ? (
+          <CameraView
+            ref={cameraRef}
+            style={StyleSheet.absoluteFillObject}
+            facing={facing}
+            enableTorch={torchEnabled}
           >
-            <View style={styles.cameraView}>
-              {permission?.granted ? (
-                <CameraView
-                  ref={cameraRef}
-                  style={StyleSheet.absoluteFillObject}
-                  facing="back"
+            <View style={styles.overlayContainer}>
+              <View style={styles.topControls}>
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  onPress={() => router.back()}
+                  style={styles.roundButton}
                 >
-                  {/* Native camera app gradient overlay */}
-                  <View style={styles.nativeGradientOverlay} />
+                  <Ionicons name="chevron-back" size={20} color={palette.textPrimary} />
+                </TouchableOpacity>
 
-                  {/* Scan interface - hidden by default, shown when overlays enabled */}
-                  {showOverlays && !isScanning && !scannedItem && (
-                    <View style={styles.scanInterface}>
-                      {/* Animated scan ring */}
-                      <Animated.View
-                        style={[
-                          styles.scanRing,
-                          {
-                            transform: [{ scale: scanPulseAnim }],
-                          },
-                        ]}
-                      >
-                        <View style={styles.scanRingInner}>
-                          <Ionicons
-                            name="scan-outline"
-                            size={60}
-                            color={colors.primary}
-                          />
-                        </View>
-                      </Animated.View>
+                <View style={styles.headerMeta}>
+                  <Text style={styles.headerTitle}>AI Scanner</Text>
+                  <Text style={styles.headerSubtitle}>YOLO v11 real-time detection</Text>
+                </View>
 
-                      {/* Scan instructions */}
-                      <View style={styles.scanInstructions}>
-                        <Text style={styles.scanTitle}>Point at waste item</Text>
-                        <Text style={styles.scanSubtitle}>Tap to scan for recyclability</Text>
-                      </View>
-                    </View>
-                  )}
-                </CameraView>
-              ) : (
-                <View style={styles.permissionView}>
-                  <View style={styles.permissionIcon}>
-                    <Ionicons name="camera" size={64} color={colors.primary} />
-                  </View>
-                  <Text style={styles.permissionTitle}>Camera Access Needed</Text>
-                  <Text style={styles.permissionText}>
-                    Allow camera access to scan waste items
+                <View style={styles.topActions}>
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    onPress={toggleTorch}
+                    style={styles.roundButton}
+                  >
+                    <Ionicons
+                      name={torchEnabled ? "flash" : "flash-outline"}
+                      size={18}
+                      color={palette.textPrimary}
+                    />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    onPress={toggleFacing}
+                    style={styles.roundButton}
+                  >
+                    <Ionicons
+                      name="camera-reverse-outline"
+                      size={20}
+                      color={palette.textPrimary}
+                    />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    onPress={toggleOverlays}
+                    style={styles.roundButton}
+                  >
+                    <Ionicons
+                      name={showOverlays ? "layers" : "layers-outline"}
+                      size={20}
+                      color={palette.textPrimary}
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.reticleWrapper}>
+                <Animated.View
+                  style={[
+                    styles.reticle,
+                    { transform: [{ scale: scanPulseAnim }] },
+                  ]}
+                >
+                  {RETICLE_CORNERS.map((corner) => (
+                    <View key={corner} style={[styles.corner, styles[corner]]} />
+                  ))}
+                  <View style={styles.gridLineHorizontal} />
+                  <View style={[styles.gridLineHorizontal, styles.gridLineHorizontalSecondary]} />
+                  <View style={styles.gridLineVertical} />
+                  <View style={[styles.gridLineVertical, styles.gridLineVerticalSecondary]} />
+                  <Animated.View
+                    style={[
+                      styles.scanLine,
+                      { transform: [{ translateY: scanLineTranslate }] },
+                    ]}
+                  />
+                </Animated.View>
+                <View style={styles.callout}>
+                  <Ionicons
+                    name="sparkles-outline"
+                    size={18}
+                    color={palette.accentSoft}
+                  />
+                  <Text style={styles.calloutText}>
+                    Align the item within the frame to analyze recyclability
                   </Text>
+                </View>
+              </View>
+
+              {showOverlays && scannedItem?.bbox && scannedItem.bbox.length >= 4 && (
+                <View style={styles.boundingBoxContainer}>
+                  <View
+                    style={[
+                      styles.boundingBox,
+                      {
+                        left: `${scannedItem.bbox[0] * 100}%`,
+                        top: `${scannedItem.bbox[1] * 100}%`,
+                        width: `${
+                          (scannedItem.bbox[2] - scannedItem.bbox[0]) * 100
+                        }%`,
+                        height: `${
+                          (scannedItem.bbox[3] - scannedItem.bbox[1]) * 100
+                        }%`,
+                        borderColor: scannedItem.recyclable
+                          ? palette.accent
+                          : palette.danger,
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[styles.boundingCornerBase, styles.boundingCornerTL]}
+                    />
+                    <View
+                      style={[styles.boundingCornerBase, styles.boundingCornerTR]}
+                    />
+                    <View
+                      style={[styles.boundingCornerBase, styles.boundingCornerBL]}
+                    />
+                    <View
+                      style={[styles.boundingCornerBase, styles.boundingCornerBR]}
+                    />
+                    <View style={styles.confidenceBadge}>
+                      <Text style={styles.confidenceBadgeText}>
+                        {scannedItem.confidence}% • {scannedItem.recyclable ? "Recyclable" : "Not recyclable"}
+                      </Text>
+                    </View>
+                    {scannedItem.fallback_model && (
+                      <View style={styles.modelBadge}>
+                        <Ionicons
+                          name="hardware-chip-outline"
+                          size={12}
+                          color={palette.textPrimary}
+                        />
+                        <Text style={styles.modelBadgeText}>Fallback model</Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
               )}
 
-              {/* Scanning overlay - always visible during scanning */}
+              <View style={styles.bottomOverlay}>
+                <View style={styles.modelStatus}>
+                  <View style={styles.statusIconWrapper}>
+                    <Ionicons name="radio-outline" size={16} color={palette.textPrimary} />
+                  </View>
+                  <View>
+                    <Text style={styles.statusTitle}>Live analysis</Text>
+                    <Text style={styles.statusSubtitle}>
+                      {isScanning
+                        ? "Running YOLO v11 inference"
+                        : scannedItem
+                        ? `Confidence ${scannedItem.confidence}%`
+                        : "Tap capture to start scanning"}
+                    </Text>
+                  </View>
+                </View>
+                {scannedItem?.impact && (
+                  <View style={styles.impactTag}>
+                    <Ionicons
+                      name="leaf-outline"
+                      size={14}
+                      color={palette.accent}
+                    />
+                    <Text style={styles.impactTagText}>{scannedItem.impact}</Text>
+                  </View>
+                )}
+              </View>
+
               {isScanning && (
-                <View style={styles.scanningOverlay}>
-                  <View style={styles.scanningContainer}>
-                    <View style={styles.scanningRing}>
-                      <ActivityIndicator size="large" color={colors.primary} />
-                    </View>
-                    <Text style={styles.scanningTitle}>Analyzing...</Text>
-                    <Text style={styles.scanningText}>
+                <View style={styles.loadingOverlay}>
+                  <View style={styles.loadingCard}>
+                    <ActivityIndicator size="large" color={palette.accent} />
+                    <Text style={styles.loadingTitle}>Analyzing...</Text>
+                    <Text style={styles.loadingText}>
                       Detecting material type and recyclability
                     </Text>
                   </View>
                 </View>
               )}
+            </View>
+          </CameraView>
+        ) : (
+          <View style={styles.permissionCard}>
+            <View style={styles.permissionIconWrapper}>
+              <Ionicons name="camera" size={42} color={palette.accent} />
+            </View>
+            <Text style={styles.permissionTitle}>Camera access needed</Text>
+            <Text style={styles.permissionText}>
+              We use your camera to detect materials with our AI scanner.
+            </Text>
+            <TouchableOpacity
+              onPress={requestPermission}
+              style={styles.permissionButton}
+            >
+              <Ionicons
+                name="lock-open-outline"
+                size={18}
+                color={palette.textPrimary}
+              />
+              <Text style={styles.permissionButtonText}>Grant permission</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
 
-              {/* Results overlay - shown when overlays enabled */}
-              {scannedItem && showOverlays && (
-                <Animated.View
+      <Animated.View
+        style={[
+          styles.resultSheet,
+          {
+            transform: [{ translateY: resultTranslate }],
+            opacity: resultSheetAnim,
+          },
+        ]}
+      >
+        {scannedItem ? (
+          <View style={styles.resultContent}>
+            <View style={styles.resultHeader}>
+              <View
+                style={[
+                  styles.resultPill,
+                  {
+                    backgroundColor: scannedItem.recyclable
+                      ? "rgba(34, 197, 94, 0.14)"
+                      : "rgba(239, 68, 68, 0.14)",
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={
+                    scannedItem.recyclable
+                      ? "checkmark-circle"
+                      : "close-circle"
+                  }
+                  size={18}
+                  color={
+                    scannedItem.recyclable ? palette.accent : palette.danger
+                  }
+                />
+                <Text
                   style={[
-                    styles.resultOverlay,
+                    styles.resultPillText,
                     {
-                      transform: [{ translateY: resultSlideAnim }],
-                      opacity: overlayFadeAnim,
+                      color: scannedItem.recyclable
+                        ? palette.accent
+                        : palette.danger,
                     },
                   ]}
                 >
-                  <View style={styles.resultContainer}>
-                    <View style={styles.resultIconContainer}>
-                      <Ionicons
-                        name={
-                          scannedItem.recyclable
-                            ? "checkmark-circle"
-                            : "close-circle"
-                        }
-                        size={80}
-                        color={
-                          scannedItem.recyclable ? colors.success : colors.error
-                        }
-                      />
-                    </View>
-
-                    <Text style={styles.resultTitle}>{scannedItem.item}</Text>
-
-                    <View
-                      style={[
-                        styles.resultBadge,
-                        {
-                          backgroundColor: scannedItem.recyclable
-                            ? colors.success + "20"
-                            : colors.error + "20",
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.resultBadgeText,
-                          {
-                            color: scannedItem.recyclable
-                              ? colors.success
-                              : colors.error,
-                          },
-                        ]}
-                      >
-                        {scannedItem.recyclable
-                          ? "♻️ Recyclable"
-                          : "🗑️ Not Recyclable"}
-                      </Text>
-                    </View>
-
-                    <Text style={styles.resultCategory}>
-                      Material: {scannedItem.category}
-                    </Text>
-
-                    {/* AR Bounding Box Overlay */}
-                    {scannedItem.bbox && scannedItem.bbox.length >= 4 && (
-                      <View style={styles.arOverlay}>
-                        <View
-                          style={[
-                            styles.boundingBox,
-                            {
-                              left: `${scannedItem.bbox[0] * 100}%`,
-                              top: `${scannedItem.bbox[1] * 100}%`,
-                              width: `${
-                                (scannedItem.bbox[2] - scannedItem.bbox[0]) *
-                                100
-                              }%`,
-                              height: `${
-                                (scannedItem.bbox[3] - scannedItem.bbox[1]) *
-                                100
-                              }%`,
-                              borderColor: scannedItem.recyclable
-                                ? colors.success
-                                : colors.error,
-                            },
-                          ]}
-                        />
-                        <View style={styles.confidenceOnBox}>
-                          <Text style={styles.confidenceOnBoxText}>
-                            {scannedItem.confidence}% confidence
-                          </Text>
-                        </View>
-                        {scannedItem.fallback_model && (
-                          <View style={styles.modelIndicator}>
-                            <Text style={styles.modelIndicatorText}>
-                              AI Model
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                    )}
-
-                    {scannedItem.image_path && (
-                      <View style={styles.storageIndicator}>
-                        <Ionicons name="cloud-upload" size={16} color={colors.success} />
-                        <Text style={styles.storageIndicatorText}>
-                          Image saved for analysis
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                </Animated.View>
-              )}
-
-              {/* Overlay toggle hint - shown when overlays are hidden */}
-              {!showOverlays && scannedItem && (
-                <View style={styles.overlayHint}>
-                  <Text style={styles.overlayHintText}>
-                    Tap to show details
-                  </Text>
-                </View>
-              )}
-            </View>
-          </TouchableOpacity>
-        </View>
-
-        {/* Bottom Scan Button */}
-        <View style={styles.bottomControls}>
-          {!permission?.granted ? (
-            <TouchableOpacity
-              onPress={requestPermission}
-              style={styles.scanButton}
-            >
-              <View
-                style={[
-                  styles.scanButtonGradient,
-                  { backgroundColor: colors.primary },
-                ]}
-              >
-                <Ionicons name="camera" size={24} color={colors.textWhite} />
-                <Text style={styles.scanButtonText}>
-                  Grant Camera Permission
+                  {scannedItem.recyclable ? "Recyclable" : "Not recyclable"}
                 </Text>
               </View>
-            </TouchableOpacity>
-          ) : scannedItem ? (
-            <View style={styles.resultActions}>
-              <TouchableOpacity
-                onPress={handleRescan}
-                style={styles.rescanButton}
-              >
-                <Ionicons name="refresh" size={20} color={colors.primary} />
-                <Text style={styles.rescanButtonText}>Scan Again</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => router.push("/guide" as any)}
-                style={styles.findCenterButton}
-              >
-                <View
-                  style={[
-                    styles.findCenterGradient,
-                    { backgroundColor: colors.secondary },
-                  ]}
-                >
-                  <Text style={styles.findCenterText}>Find Center</Text>
-                </View>
+              <TouchableOpacity onPress={handleRescan} style={styles.secondaryButton}>
+                <Ionicons
+                  name="refresh"
+                  size={16}
+                  color={palette.textSecondary}
+                />
+                <Text style={styles.secondaryButtonText}>Scan again</Text>
               </TouchableOpacity>
             </View>
-          ) : (
-            <TouchableOpacity
-              onPress={handleScan}
-              disabled={isScanning}
-              style={styles.scanButton}
-            >
-              <View
-                style={[
-                  styles.scanButtonGradient,
-                  { backgroundColor: colors.primary },
-                ]}
-              >
-                <Ionicons name="camera" size={24} color={colors.textWhite} />
-                <Text style={styles.scanButtonText}>
-                  {isScanning ? "Scanning..." : "Start Scan"}
+
+            <Text style={styles.resultTitle}>{scannedItem.item}</Text>
+            <Text style={styles.resultSubtitle}>{scannedItem.category}</Text>
+
+            <View style={styles.metricsRow}>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricLabel}>Confidence</Text>
+                <Text style={styles.metricValue}>{scannedItem.confidence}%</Text>
+              </View>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricLabel}>Model</Text>
+                <Text style={styles.metricValue}>
+                  {scannedItem.fallback_model ? "Fallback" : "YOLO v11"}
                 </Text>
               </View>
-            </TouchableOpacity>
-          )}
-        </View>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricLabel}>Impact</Text>
+                <Text style={styles.metricValue}>{scannedItem.impact}</Text>
+              </View>
+            </View>
+
+            <View style={styles.instructionsCard}>
+              <Text style={styles.instructionsTitle}>Next steps</Text>
+              <Text style={styles.instructionsText}>{scannedItem.instructions}</Text>
+            </View>
+
+            {scannedItem.image_path && (
+              <View style={styles.storageRow}>
+                <Ionicons
+                  name="cloud-upload-outline"
+                  size={16}
+                  color={palette.accent}
+                />
+                <Text style={styles.storageText}>Image saved for training improvements</Text>
+              </View>
+            )}
+          </View>
+        ) : (
+          <View style={styles.resultPlaceholder}>
+            <Ionicons name="scan-circle-outline" size={32} color={palette.textMuted} />
+            <Text style={styles.placeholderTitle}>Ready when you are</Text>
+            <Text style={styles.placeholderText}>
+              Position your item in the frame and tap the capture button to detect its material instantly.
+            </Text>
+          </View>
+        )}
+      </Animated.View>
+
+      <View style={styles.captureBar}>
+        <TouchableOpacity
+          accessibilityRole="button"
+          onPress={() => router.push("/(tabs)/guide" as any)}
+          style={styles.utilityButton}
+        >
+          <Ionicons name="book-outline" size={20} color={palette.textPrimary} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          accessibilityRole="button"
+          onPress={handleScan}
+          disabled={isScanning}
+          style={[styles.captureButton, isScanning && styles.captureButtonDisabled]}
+        >
+          <View style={styles.captureInner}>
+            <Ionicons name="scan" size={28} color={palette.textPrimary} />
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          accessibilityRole="button"
+          onPress={toggleOverlays}
+          style={styles.utilityButton}
+        >
+          <Ionicons
+            name={showOverlays ? "eye-outline" : "eye-off-outline"}
+            size={20}
+            color={palette.textPrimary}
+          />
+        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
 };
 
+const baseShadow = {
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: 10 },
+  shadowOpacity: 0.25,
+  shadowRadius: 25,
+  elevation: 20,
+};
+
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: palette.backdrop,
   },
-  header: {
-    paddingHorizontal: 20,
-    paddingVertical: 24,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+  cameraShell: {
+    flex: 1,
+    borderRadius: 28,
+    overflow: "hidden",
+    marginHorizontal: 18,
+    marginTop: 12,
+    backgroundColor: palette.surface,
+    ...baseShadow,
   },
-  headerContent: {
+  overlayContainer: {
+    flex: 1,
+    backgroundColor: palette.cameraMask,
+    justifyContent: "space-between",
+  },
+  topControls: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 16,
-    gap: 16,
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 18,
   },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    justifyContent: "center",
+  headerMeta: {
     alignItems: "center",
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: colors.textWhite,
+    fontSize: 18,
+    fontWeight: "700",
+    color: palette.textPrimary,
   },
   headerSubtitle: {
-    fontSize: 16,
-    color: colors.textWhite,
-    opacity: 0.9,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 20,
-    marginTop: -12,
-  },
-  cameraCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    marginBottom: 20,
-    overflow: "hidden",
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  cameraView: {
-    flex: 1,
-    backgroundColor: colors.cardBackground,
-    justifyContent: "center",
-    alignItems: "center",
-    position: "relative",
-    minHeight: height * 0.7, // At least 70% of screen height
-    maxHeight: height - 120, // Leave space for header and bottom elements
-  },
-  defaultView: {
-    alignItems: "center",
-    justifyContent: "center",
-    flex: 1,
-  },
-  placeholderImage: {
-    width: width - 80,
-    height: 240,
-    position: "absolute",
-  },
-  scanArea: {
-    width: 192,
-    height: 192,
-    borderWidth: 4,
-    borderColor: colors.primary,
-    borderStyle: "dashed",
-    borderRadius: 16,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.8)",
-  },
-  scanningView: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  scanningText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: colors.primary,
-    marginTop: 16,
-  },
-  scanningSubtext: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginTop: 4,
-  },
-  scanningHint: {
     fontSize: 12,
-    color: colors.textWhite,
-    marginTop: 8,
-    opacity: 0.8,
-    textAlign: 'center',
+    color: palette.textSecondary,
+    marginTop: 2,
   },
-  resultView: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 24,
-  },
-  resultIcon: {
-    marginBottom: 16,
-  },
-  itemName: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: colors.text,
-    textAlign: "center",
-    marginBottom: 12,
-  },
-  statusBadge: {
+  topActions: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    marginBottom: 12,
-  },
-  statusText: {
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  confidenceText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginLeft: 8,
-  },
-  categoryText: {
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-  instructionsCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 24,
-    marginBottom: 100,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  instructionsTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: colors.text,
-    marginBottom: 12,
-  },
-  instructionsText: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    lineHeight: 20,
-    marginBottom: 16,
-  },
-  impactBadge: {
-    backgroundColor: colors.primary + "20",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-  },
-  impactText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: colors.primary,
-  },
-  actionButtons: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  rescanButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: colors.primary + "50",
-    borderRadius: 12,
-    backgroundColor: colors.primary + "10",
     gap: 8,
   },
-  rescanButtonText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: colors.primary,
-  },
-  findCenterButton: {
-    flex: 1,
-  },
-  findCenterGradient: {
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  findCenterText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: colors.textWhite,
-  },
-  scanButton: {
-    marginBottom: 100,
-  },
-  scanButtonGradient: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 16,
-    borderRadius: 16,
-    gap: 12,
-  },
-  scanButtonText: {
-    color: colors.textWhite,
-    fontSize: 18,
-    fontWeight: "600",
-  },
-  overlay: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.3)",
-  },
-  permissionText: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    marginTop: 16,
-    textAlign: "center",
-  },
-  arOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    pointerEvents: "none",
-  },
-  boundingBox: {
-    position: "absolute",
-    borderWidth: 3,
-    borderStyle: "solid",
-    backgroundColor: "transparent",
-  },
-  confidenceOnBox: {
-    position: "absolute",
-    top: -25,
-    left: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.8)",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  confidenceOnBoxText: {
-    color: colors.textWhite,
-    fontSize: 10,
-    fontWeight: "600",
-  },
-  modelIndicator: {
-    position: "absolute",
-    top: 10,
-    right: 10,
-    backgroundColor: "rgba(0, 0, 0, 0.7)",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  modelIndicatorText: {
-    color: colors.textWhite,
-    fontSize: 10,
-    fontWeight: "600",
-  },
-  storageIndicator: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 8,
-    gap: 4,
-  },
-  storageIndicatorText: {
-    fontSize: 12,
-    color: colors.success,
-    fontWeight: "500",
-  },
-  // Snapchat-style new styles
-  cameraContainer: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    marginHorizontal: 0,
-    marginVertical: 0,
-    marginBottom: 20,
-    overflow: "hidden",
-    borderRadius: 0, // Full screen, no rounded corners
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    elevation: 0,
-  },
-  gradientOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.4)", // Fallback gradient effect
-  },
-  scanInterface: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 20,
-  },
-  scanRing: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 30,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  scanRingInner: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: colors.primary + "10",
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 2,
-    borderColor: colors.primary,
-  },
-  scanInstructions: {
-    alignItems: "center",
-  },
-  scanTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: colors.textWhite,
-    marginBottom: 8,
-    textAlign: "center",
-  },
-  scanSubtitle: {
-    fontSize: 16,
-    color: colors.textWhite,
-    opacity: 0.9,
-    textAlign: "center",
-  },
-  permissionView: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 20,
-  },
-  permissionIcon: {
-    marginBottom: 20,
-  },
-  permissionTitle: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: colors.primary,
-    marginBottom: 12,
-    textAlign: "center",
-  },
-  scanningOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.8)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  scanningContainer: {
-    alignItems: "center",
-    paddingHorizontal: 20,
-  },
-  scanningRing: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.primary + "20",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  scanningTitle: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: colors.textWhite,
-    marginBottom: 8,
-  },
-  resultOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.9)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  resultContainer: {
-    alignItems: "center",
-    paddingHorizontal: 30,
-    paddingVertical: 20,
-  },
-  resultIconContainer: {
-    marginBottom: 20,
-  },
-  resultTitle: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: colors.textWhite,
-    textAlign: "center",
-    marginBottom: 16,
-  },
-  resultBadge: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 25,
-    marginBottom: 16,
-  },
-  resultBadgeText: {
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  resultCategory: {
-    fontSize: 16,
-    color: colors.textWhite,
-    opacity: 0.8,
-    textAlign: "center",
-    marginBottom: 20,
-  },
-  mainContainer: {
-    flex: 1,
-  },
-  // Native camera app styles
-  compactHeader: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
-  },
-  overlayToggle: {
+  roundButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    backgroundColor: "rgba(15, 23, 42, 0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+  },
+  reticleWrapper: {
+    flex: 1,
     justifyContent: "center",
     alignItems: "center",
   },
-  cameraTouchable: {
-    flex: 1,
+  reticle: {
+    width: RETICLE_SIZE,
+    height: RETICLE_SIZE,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(148, 163, 184, 0.28)",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(15, 23, 42, 0.18)",
   },
-  nativeGradientOverlay: {
+  corner: {
     position: "absolute",
+    width: 40,
+    height: 40,
+    borderColor: palette.accent,
+  },
+  topLeft: {
     top: 0,
     left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.2)", // Subtle overlay for native camera feel
+    borderLeftWidth: 4,
+    borderTopWidth: 4,
+    borderTopLeftRadius: 20,
   },
-  overlayHint: {
+  topRight: {
+    top: 0,
+    right: 0,
+    borderRightWidth: 4,
+    borderTopWidth: 4,
+    borderTopRightRadius: 20,
+  },
+  bottomLeft: {
+    bottom: 0,
+    left: 0,
+    borderLeftWidth: 4,
+    borderBottomWidth: 4,
+    borderBottomLeftRadius: 20,
+  },
+  bottomRight: {
+    bottom: 0,
+    right: 0,
+    borderRightWidth: 4,
+    borderBottomWidth: 4,
+    borderBottomRightRadius: 20,
+  },
+  gridLineHorizontal: {
     position: "absolute",
-    top: 20,
-    right: 20,
-    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    left: 24,
+    right: 24,
+    height: 1,
+    backgroundColor: "rgba(148, 163, 184, 0.22)",
+    top: RETICLE_SIZE / 3,
+  },
+  gridLineHorizontalSecondary: {
+    top: undefined,
+    bottom: RETICLE_SIZE / 3,
+  },
+  gridLineVertical: {
+    position: "absolute",
+    top: 24,
+    bottom: 24,
+    width: 1,
+    backgroundColor: "rgba(148, 163, 184, 0.22)",
+    left: RETICLE_SIZE / 3,
+  },
+  gridLineVerticalSecondary: {
+    left: undefined,
+    right: RETICLE_SIZE / 3,
+  },
+  scanLine: {
+    position: "absolute",
+    left: 18,
+    right: 18,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: "rgba(56, 189, 248, 0.85)",
+  },
+  callout: {
+    marginTop: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    backgroundColor: "rgba(15, 23, 42, 0.7)",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+    gap: 10,
+  },
+  calloutText: {
+    color: palette.textPrimary,
+    fontSize: 13,
+    flexShrink: 1,
+  },
+  boundingBoxContainer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  boundingBox: {
+    position: "absolute",
+    borderWidth: 2,
+    borderRadius: 18,
+  },
+  boundingCornerBase: {
+    position: "absolute",
+    width: 22,
+    height: 22,
+    borderColor: palette.textPrimary,
+    borderStyle: "solid",
+    opacity: 0.75,
+  },
+  boundingCornerTL: {
+    top: -2,
+    left: -2,
+    borderTopWidth: 3,
+    borderLeftWidth: 3,
+    borderTopLeftRadius: 10,
+  },
+  boundingCornerTR: {
+    top: -2,
+    right: -2,
+    borderTopWidth: 3,
+    borderRightWidth: 3,
+    borderTopRightRadius: 10,
+  },
+  boundingCornerBL: {
+    bottom: -2,
+    left: -2,
+    borderBottomWidth: 3,
+    borderLeftWidth: 3,
+    borderBottomLeftRadius: 10,
+  },
+  boundingCornerBR: {
+    bottom: -2,
+    right: -2,
+    borderBottomWidth: 3,
+    borderRightWidth: 3,
+    borderBottomRightRadius: 10,
+  },
+  confidenceBadge: {
+    position: "absolute",
+    top: -32,
+    left: 0,
+    backgroundColor: palette.card,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+  },
+  confidenceBadgeText: {
+    color: palette.textPrimary,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  modelBadge: {
+    position: "absolute",
+    bottom: -28,
+    right: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(15, 23, 42, 0.75)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+  },
+  modelBadgeText: {
+    color: palette.textPrimary,
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  bottomOverlay: {
+    paddingHorizontal: 18,
+    paddingBottom: 24,
+  },
+  modelStatus: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "rgba(15, 23, 42, 0.7)",
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+  },
+  statusIconWrapper: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(56, 189, 248, 0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  statusTitle: {
+    color: palette.textPrimary,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  statusSubtitle: {
+    color: palette.textSecondary,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  impactTag: {
+    marginTop: 12,
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: 16,
+    backgroundColor: "rgba(34, 197, 94, 0.12)",
   },
-  overlayHintText: {
-    color: colors.textWhite,
+  impactTagText: {
+    color: palette.accent,
     fontSize: 12,
-    fontWeight: "500",
+    fontWeight: "600",
   },
-  bottomControls: {
-    position: "absolute",
-    bottom: 40,
-    left: 0,
-    right: 0,
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(2, 6, 23, 0.78)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loadingCard: {
+    width: RETICLE_SIZE,
+    backgroundColor: palette.card,
+    borderRadius: 22,
+    paddingVertical: 28,
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+  },
+  loadingTitle: {
+    color: palette.textPrimary,
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  loadingText: {
+    color: palette.textSecondary,
+    fontSize: 13,
+    textAlign: "center",
+    paddingHorizontal: 28,
+  },
+  permissionCard: {
+    flex: 1,
+    margin: 24,
+    borderRadius: 24,
+    backgroundColor: palette.card,
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 16,
+    paddingHorizontal: 24,
+  },
+  permissionIconWrapper: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: "rgba(34, 197, 94, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  permissionTitle: {
+    color: palette.textPrimary,
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  permissionText: {
+    color: palette.textSecondary,
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  permissionButton: {
+    marginTop: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: palette.accent,
     paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 16,
+  },
+  permissionButtonText: {
+    color: palette.textPrimary,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  resultSheet: {
+    backgroundColor: palette.card,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 24,
+    marginHorizontal: 12,
+    marginBottom: 110,
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+    ...baseShadow,
+  },
+  resultContent: {
+    gap: 18,
+  },
+  resultHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
   },
-  resultActions: {
+  resultPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 18,
+  },
+  resultPillText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  secondaryButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: "rgba(148, 163, 184, 0.16)",
+  },
+  secondaryButtonText: {
+    color: palette.textSecondary,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  resultTitle: {
+    color: palette.textPrimary,
+    fontSize: 24,
+    fontWeight: "700",
+  },
+  resultSubtitle: {
+    color: palette.textSecondary,
+    fontSize: 14,
+  },
+  metricsRow: {
     flexDirection: "row",
     gap: 12,
-    width: "100%",
+  },
+  metricCard: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+  },
+  metricLabel: {
+    color: palette.textSecondary,
+    fontSize: 12,
+    marginBottom: 6,
+  },
+  metricValue: {
+    color: palette.textPrimary,
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  instructionsCard: {
+    backgroundColor: "rgba(15, 23, 42, 0.65)",
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+  },
+  instructionsTitle: {
+    color: palette.textPrimary,
+    fontSize: 15,
+    fontWeight: "700",
+    marginBottom: 8,
+  },
+  instructionsText: {
+    color: palette.textSecondary,
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  storageRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(34, 197, 94, 0.12)",
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  storageText: {
+    color: palette.accent,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  resultPlaceholder: {
+    alignItems: "center",
+    gap: 10,
+  },
+  placeholderTitle: {
+    color: palette.textPrimary,
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  placeholderText: {
+    color: palette.textSecondary,
+    fontSize: 13,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  captureBar: {
+    position: "absolute",
+    bottom: 24,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  utilityButton: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: palette.card,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+  },
+  captureButton: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(34, 197, 94, 0.22)",
+    borderWidth: 2,
+    borderColor: "rgba(34, 197, 94, 0.4)",
+  },
+  captureButtonDisabled: {
+    opacity: 0.6,
+  },
+  captureInner: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: palette.accent,
+    alignItems: "center",
     justifyContent: "center",
   },
 });
