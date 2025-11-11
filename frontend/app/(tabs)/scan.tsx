@@ -49,7 +49,7 @@ type ScanResult = {
   impact: string;
   category: string;
   bbox?: number[];
-  fallback_model?: string;
+  fallback_model?: boolean;
   image_path?: string;
 };
 
@@ -146,7 +146,7 @@ const Scan = () => {
     try {
       const photo = await cameraRef.current.takePictureAsync({
         base64: true,
-        quality: 0.7,
+        quality: 0.5,
       });
 
       const response = await apiService.classifyItem(photo.base64!);
@@ -225,12 +225,18 @@ const Scan = () => {
                   onPress={() => router.back()}
                   style={styles.roundButton}
                 >
-                  <Ionicons name="chevron-back" size={20} color={palette.textPrimary} />
+                  <Ionicons
+                    name="chevron-back"
+                    size={20}
+                    color={palette.textPrimary}
+                  />
                 </TouchableOpacity>
 
                 <View style={styles.headerMeta}>
                   <Text style={styles.headerTitle}>AI Scanner</Text>
-                  <Text style={styles.headerSubtitle}>YOLO v11 real-time detection</Text>
+                  <Text style={styles.headerSubtitle}>
+                    YOLO11 real-time detection
+                  </Text>
                 </View>
 
                 <View style={styles.topActions}>
@@ -278,12 +284,25 @@ const Scan = () => {
                   ]}
                 >
                   {RETICLE_CORNERS.map((corner) => (
-                    <View key={corner} style={[styles.corner, styles[corner]]} />
+                    <View
+                      key={corner}
+                      style={[styles.corner, styles[corner]]}
+                    />
                   ))}
                   <View style={styles.gridLineHorizontal} />
-                  <View style={[styles.gridLineHorizontal, styles.gridLineHorizontalSecondary]} />
+                  <View
+                    style={[
+                      styles.gridLineHorizontal,
+                      styles.gridLineHorizontalSecondary,
+                    ]}
+                  />
                   <View style={styles.gridLineVertical} />
-                  <View style={[styles.gridLineVertical, styles.gridLineVerticalSecondary]} />
+                  <View
+                    style={[
+                      styles.gridLineVertical,
+                      styles.gridLineVerticalSecondary,
+                    ]}
+                  />
                   <Animated.View
                     style={[
                       styles.scanLine,
@@ -303,67 +322,90 @@ const Scan = () => {
                 </View>
               </View>
 
-              {showOverlays && scannedItem?.bbox && scannedItem.bbox.length >= 4 && (
-                <View style={styles.boundingBoxContainer}>
-                  <View
-                    style={[
-                      styles.boundingBox,
-                      {
-                        left: `${scannedItem.bbox[0] * 100}%`,
-                        top: `${scannedItem.bbox[1] * 100}%`,
-                        width: `${
-                          (scannedItem.bbox[2] - scannedItem.bbox[0]) * 100
-                        }%`,
-                        height: `${
-                          (scannedItem.bbox[3] - scannedItem.bbox[1]) * 100
-                        }%`,
-                        borderColor: scannedItem.recyclable
-                          ? palette.accent
-                          : palette.danger,
-                      },
-                    ]}
-                  >
+              {showOverlays &&
+                scannedItem?.bbox &&
+                scannedItem.bbox.length >= 4 && (
+                  <View style={styles.boundingBoxContainer}>
                     <View
-                      style={[styles.boundingCornerBase, styles.boundingCornerTL]}
-                    />
-                    <View
-                      style={[styles.boundingCornerBase, styles.boundingCornerTR]}
-                    />
-                    <View
-                      style={[styles.boundingCornerBase, styles.boundingCornerBL]}
-                    />
-                    <View
-                      style={[styles.boundingCornerBase, styles.boundingCornerBR]}
-                    />
-                    <View style={styles.confidenceBadge}>
-                      <Text style={styles.confidenceBadgeText}>
-                        {scannedItem.confidence}% • {scannedItem.recyclable ? "Recyclable" : "Not recyclable"}
-                      </Text>
-                    </View>
-                    {scannedItem.fallback_model && (
-                      <View style={styles.modelBadge}>
-                        <Ionicons
-                          name="hardware-chip-outline"
-                          size={12}
-                          color={palette.textPrimary}
-                        />
-                        <Text style={styles.modelBadgeText}>Fallback model</Text>
+                      style={[
+                        styles.boundingBox,
+                        {
+                          left: `${scannedItem.bbox[0] * 100}%`,
+                          top: `${scannedItem.bbox[1] * 100}%`,
+                          width: `${
+                            (scannedItem.bbox[2] - scannedItem.bbox[0]) * 100
+                          }%`,
+                          height: `${
+                            (scannedItem.bbox[3] - scannedItem.bbox[1]) * 100
+                          }%`,
+                          borderColor: scannedItem.recyclable
+                            ? palette.accent
+                            : palette.danger,
+                        },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.boundingCornerBase,
+                          styles.boundingCornerTL,
+                        ]}
+                      />
+                      <View
+                        style={[
+                          styles.boundingCornerBase,
+                          styles.boundingCornerTR,
+                        ]}
+                      />
+                      <View
+                        style={[
+                          styles.boundingCornerBase,
+                          styles.boundingCornerBL,
+                        ]}
+                      />
+                      <View
+                        style={[
+                          styles.boundingCornerBase,
+                          styles.boundingCornerBR,
+                        ]}
+                      />
+                      <View style={styles.confidenceBadge}>
+                        <Text style={styles.confidenceBadgeText}>
+                          {scannedItem.confidence}% •{" "}
+                          {scannedItem.recyclable
+                            ? "Recyclable"
+                            : "Not recyclable"}
+                        </Text>
                       </View>
-                    )}
+                      {scannedItem.fallback_model && (
+                        <View style={styles.modelBadge}>
+                          <Ionicons
+                            name="hardware-chip-outline"
+                            size={12}
+                            color={palette.textPrimary}
+                          />
+                          <Text style={styles.modelBadgeText}>
+                            Fallback model
+                          </Text>
+                        </View>
+                      )}
+                    </View>
                   </View>
-                </View>
-              )}
+                )}
 
               <View style={styles.bottomOverlay}>
                 <View style={styles.modelStatus}>
                   <View style={styles.statusIconWrapper}>
-                    <Ionicons name="radio-outline" size={16} color={palette.textPrimary} />
+                    <Ionicons
+                      name="radio-outline"
+                      size={16}
+                      color={palette.textPrimary}
+                    />
                   </View>
                   <View>
                     <Text style={styles.statusTitle}>Live analysis</Text>
                     <Text style={styles.statusSubtitle}>
                       {isScanning
-                        ? "Running YOLO v11 inference"
+                        ? "Running YOLO11 inference"
                         : scannedItem
                         ? `Confidence ${scannedItem.confidence}%`
                         : "Tap capture to start scanning"}
@@ -377,7 +419,9 @@ const Scan = () => {
                       size={14}
                       color={palette.accent}
                     />
-                    <Text style={styles.impactTagText}>{scannedItem.impact}</Text>
+                    <Text style={styles.impactTagText}>
+                      {scannedItem.impact}
+                    </Text>
                   </View>
                 )}
               </View>
@@ -443,9 +487,7 @@ const Scan = () => {
               >
                 <Ionicons
                   name={
-                    scannedItem.recyclable
-                      ? "checkmark-circle"
-                      : "close-circle"
+                    scannedItem.recyclable ? "checkmark-circle" : "close-circle"
                   }
                   size={18}
                   color={
@@ -465,7 +507,10 @@ const Scan = () => {
                   {scannedItem.recyclable ? "Recyclable" : "Not recyclable"}
                 </Text>
               </View>
-              <TouchableOpacity onPress={handleRescan} style={styles.secondaryButton}>
+              <TouchableOpacity
+                onPress={handleRescan}
+                style={styles.secondaryButton}
+              >
                 <Ionicons
                   name="refresh"
                   size={16}
@@ -481,12 +526,14 @@ const Scan = () => {
             <View style={styles.metricsRow}>
               <View style={styles.metricCard}>
                 <Text style={styles.metricLabel}>Confidence</Text>
-                <Text style={styles.metricValue}>{scannedItem.confidence}%</Text>
+                <Text style={styles.metricValue}>
+                  {scannedItem.confidence}%
+                </Text>
               </View>
               <View style={styles.metricCard}>
                 <Text style={styles.metricLabel}>Model</Text>
                 <Text style={styles.metricValue}>
-                  {scannedItem.fallback_model ? "Fallback" : "YOLO v11"}
+                  {scannedItem.fallback_model ? "Fallback" : "YOLO11"}
                 </Text>
               </View>
               <View style={styles.metricCard}>
@@ -497,7 +544,9 @@ const Scan = () => {
 
             <View style={styles.instructionsCard}>
               <Text style={styles.instructionsTitle}>Next steps</Text>
-              <Text style={styles.instructionsText}>{scannedItem.instructions}</Text>
+              <Text style={styles.instructionsText}>
+                {scannedItem.instructions}
+              </Text>
             </View>
 
             {scannedItem.image_path && (
@@ -507,16 +556,23 @@ const Scan = () => {
                   size={16}
                   color={palette.accent}
                 />
-                <Text style={styles.storageText}>Image saved for training improvements</Text>
+                <Text style={styles.storageText}>
+                  Image saved for training improvements
+                </Text>
               </View>
             )}
           </View>
         ) : (
           <View style={styles.resultPlaceholder}>
-            <Ionicons name="scan-circle-outline" size={32} color={palette.textMuted} />
+            <Ionicons
+              name="scan-circle-outline"
+              size={32}
+              color={palette.textMuted}
+            />
             <Text style={styles.placeholderTitle}>Ready when you are</Text>
             <Text style={styles.placeholderText}>
-              Position your item in the frame and tap the capture button to detect its material instantly.
+              Position your item in the frame and tap the capture button to
+              detect its material instantly.
             </Text>
           </View>
         )}
@@ -535,7 +591,10 @@ const Scan = () => {
           accessibilityRole="button"
           onPress={handleScan}
           disabled={isScanning}
-          style={[styles.captureButton, isScanning && styles.captureButtonDisabled]}
+          style={[
+            styles.captureButton,
+            isScanning && styles.captureButtonDisabled,
+          ]}
         >
           <View style={styles.captureInner}>
             <Ionicons name="scan" size={28} color={palette.textPrimary} />
@@ -573,12 +632,7 @@ const styles = StyleSheet.create({
   },
   cameraShell: {
     flex: 1,
-    borderRadius: 28,
-    overflow: "hidden",
-    marginHorizontal: 18,
-    marginTop: 12,
     backgroundColor: palette.surface,
-    ...baseShadow,
   },
   overlayContainer: {
     flex: 1,

@@ -6,6 +6,7 @@ images_needing_labels.txt
 manual_labeling_guide.md
 yolo11n.pt
 test_api.py
+best.pt
 sanity_check.py
 remap_labels.py
 _preview.jpg

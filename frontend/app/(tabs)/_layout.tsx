@@ -87,6 +87,8 @@ const CustomTabBar = () => {
 };
 
 export default function TabLayout() {
+  const pathname = usePathname();
+
   return (
     <>
       <Tabs
@@ -101,7 +103,7 @@ export default function TabLayout() {
         <Tabs.Screen name="reward" />
         <Tabs.Screen name="profile" />
       </Tabs>
-      <CustomTabBar />
+      {pathname !== "/scan" && <CustomTabBar />}
     </>
   );
 }

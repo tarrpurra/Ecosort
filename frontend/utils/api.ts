@@ -1,7 +1,7 @@
 // Backend is running on 0.0.0.0:8000, but frontend needs actual reachable address
 import * as SecureStore from 'expo-secure-store';
 
-const API_BASE_URL ='https://eff5ee185fb3.ngrok-free.APP'; // Production fallback
+const API_BASE_URL ='https://4c4f1f41fa46.ngrok-free.APP'; // Production fallback
 
 // Alternative configurations:
 // const API_BASE_URL = 'http://localhost:8000'; // iOS Simulator
