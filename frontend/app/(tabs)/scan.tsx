@@ -17,7 +17,7 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import { apiService } from "../../utils/api";
 
 const { width, height } = Dimensions.get("window");
-const RETICLE_SIZE = Math.min(width * 0.78, height * 0.52);
+const RETICLE_SIZE = Math.min(width * 0.88, height * 0.64);
 const RETICLE_CORNERS = [
   "topLeft",
   "topRight",
@@ -26,19 +26,19 @@ const RETICLE_CORNERS = [
 ] as const;
 
 const palette = {
-  backdrop: "#020617",
-  surface: "#0f172a",
-  card: "rgba(15, 23, 42, 0.92)",
-  accent: "#22c55e",
-  accentSoft: "#34d399",
-  accentAlt: "#38bdf8",
+  backdrop: "#01140b",
+  surface: "#042014",
+  card: "rgba(4, 32, 20, 0.94)",
+  accent: "#2dd36f",
+  accentSoft: "#3ee48a",
+  accentAlt: "#34d399",
   warning: "#f97316",
   danger: "#ef4444",
   textPrimary: "#f8fafc",
-  textSecondary: "rgba(226, 232, 240, 0.76)",
+  textSecondary: "rgba(226, 232, 240, 0.8)",
   textMuted: "rgba(148, 163, 184, 0.9)",
-  glassBorder: "rgba(148, 163, 184, 0.25)",
-  cameraMask: "rgba(2, 6, 23, 0.45)",
+  glassBorder: "rgba(46, 204, 113, 0.3)",
+  cameraMask: "rgba(1, 15, 9, 0.5)",
 };
 
 type ScanResult = {
@@ -198,6 +198,22 @@ const Scan = () => {
     setFacing((prev) => (prev === "back" ? "front" : "back"));
   };
 
+  const calloutIcon = scannedItem
+    ? scannedItem.recyclable
+      ? "checkmark-circle"
+      : "alert-circle"
+    : "sparkles-outline";
+  const calloutMessage = scannedItem
+    ? scannedItem.recyclable
+      ? "This item can be recycled. Follow the guidance below."
+      : "This item is not recyclable. See safe disposal tips below."
+    : "Align the item within the frame to analyze recyclability";
+  const calloutIconColor = scannedItem
+    ? scannedItem.recyclable
+      ? palette.accent
+      : palette.danger
+    : palette.accentSoft;
+
   const scanLineTranslate = scanLineAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [0, RETICLE_SIZE - 20],
@@ -205,7 +221,7 @@ const Scan = () => {
 
   const resultTranslate = resultSheetAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [200, 0],
+    outputRange: [280, 0],
   });
 
   return (
@@ -310,14 +326,27 @@ const Scan = () => {
                     ]}
                   />
                 </Animated.View>
-                <View style={styles.callout}>
+                <View
+                  style={[
+                    styles.callout,
+                    scannedItem &&
+                      (scannedItem.recyclable
+                        ? styles.calloutSuccess
+                        : styles.calloutDanger),
+                  ]}
+                >
                   <Ionicons
-                    name="sparkles-outline"
+                    name={calloutIcon as any}
                     size={18}
-                    color={palette.accentSoft}
+                    color={calloutIconColor}
                   />
-                  <Text style={styles.calloutText}>
-                    Align the item within the frame to analyze recyclability
+                  <Text
+                    style={[
+                      styles.calloutText,
+                      scannedItem && styles.calloutResultText,
+                    ]}
+                  >
+                    {calloutMessage}
                   </Text>
                 </View>
               </View>
@@ -374,6 +403,29 @@ const Scan = () => {
                           {scannedItem.recyclable
                             ? "Recyclable"
                             : "Not recyclable"}
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.recycleFlag,
+                          scannedItem.recyclable
+                            ? styles.recycleFlagPositive
+                            : styles.recycleFlagNegative,
+                        ]}
+                      >
+                        <Ionicons
+                          name={
+                            scannedItem.recyclable
+                              ? "checkmark-circle"
+                              : "close-circle"
+                          }
+                          size={14}
+                          color={palette.textPrimary}
+                        />
+                        <Text style={styles.recycleFlagText}>
+                          {scannedItem.recyclable
+                            ? "Recycle this item"
+                            : "Do not recycle"}
                         </Text>
                       </View>
                       {scannedItem.fallback_model && (
@@ -464,6 +516,7 @@ const Scan = () => {
       </View>
 
       <Animated.View
+        pointerEvents={scannedItem ? "auto" : "none"}
         style={[
           styles.resultSheet,
           {
@@ -578,7 +631,10 @@ const Scan = () => {
         )}
       </Animated.View>
 
-      <View style={styles.captureBar}>
+      <View
+        pointerEvents={scannedItem ? "none" : "auto"}
+        style={[styles.captureBar, scannedItem && styles.captureBarHidden]}
+      >
         <TouchableOpacity
           accessibilityRole="button"
           onPress={() => router.push("/(tabs)/guide" as any)}
@@ -618,11 +674,11 @@ const Scan = () => {
 };
 
 const baseShadow = {
-  shadowColor: "#000",
-  shadowOffset: { width: 0, height: 10 },
-  shadowOpacity: 0.25,
-  shadowRadius: 25,
-  elevation: 20,
+  shadowColor: palette.accent,
+  shadowOffset: { width: 0, height: 12 },
+  shadowOpacity: 0.35,
+  shadowRadius: 32,
+  elevation: 22,
 };
 
 const styles = StyleSheet.create({
@@ -668,7 +724,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "rgba(15, 23, 42, 0.55)",
+    backgroundColor: "rgba(4, 32, 20, 0.72)",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -684,10 +740,10 @@ const styles = StyleSheet.create({
     height: RETICLE_SIZE,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: "rgba(148, 163, 184, 0.28)",
+    borderColor: "rgba(45, 211, 111, 0.35)",
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(15, 23, 42, 0.18)",
+    backgroundColor: "rgba(4, 32, 20, 0.28)",
   },
   corner: {
     position: "absolute",
@@ -728,7 +784,7 @@ const styles = StyleSheet.create({
     left: 24,
     right: 24,
     height: 1,
-    backgroundColor: "rgba(148, 163, 184, 0.22)",
+    backgroundColor: "rgba(45, 211, 111, 0.2)",
     top: RETICLE_SIZE / 3,
   },
   gridLineHorizontalSecondary: {
@@ -740,7 +796,7 @@ const styles = StyleSheet.create({
     top: 24,
     bottom: 24,
     width: 1,
-    backgroundColor: "rgba(148, 163, 184, 0.22)",
+    backgroundColor: "rgba(45, 211, 111, 0.2)",
     left: RETICLE_SIZE / 3,
   },
   gridLineVerticalSecondary: {
@@ -753,7 +809,7 @@ const styles = StyleSheet.create({
     right: 18,
     height: 3,
     borderRadius: 2,
-    backgroundColor: "rgba(56, 189, 248, 0.85)",
+    backgroundColor: "rgba(45, 211, 111, 0.85)",
   },
   callout: {
     marginTop: 28,
@@ -761,16 +817,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 18,
     paddingVertical: 12,
-    backgroundColor: "rgba(15, 23, 42, 0.7)",
+    backgroundColor: "rgba(4, 32, 20, 0.78)",
     borderRadius: 18,
     borderWidth: 1,
     borderColor: palette.glassBorder,
     gap: 10,
   },
+  calloutSuccess: {
+    backgroundColor: "rgba(45, 211, 111, 0.24)",
+    borderColor: "rgba(45, 211, 111, 0.38)",
+  },
+  calloutDanger: {
+    backgroundColor: "rgba(239, 68, 68, 0.22)",
+    borderColor: "rgba(239, 68, 68, 0.42)",
+  },
   calloutText: {
     color: palette.textPrimary,
     fontSize: 13,
     flexShrink: 1,
+  },
+  calloutResultText: {
+    fontWeight: "600",
   },
   boundingBoxContainer: {
     ...StyleSheet.absoluteFillObject,
@@ -832,6 +899,31 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
   },
+  recycleFlag: {
+    position: "absolute",
+    left: 12,
+    bottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  recycleFlagPositive: {
+    backgroundColor: "rgba(45, 211, 111, 0.28)",
+    borderColor: "rgba(45, 211, 111, 0.5)",
+  },
+  recycleFlagNegative: {
+    backgroundColor: "rgba(239, 68, 68, 0.26)",
+    borderColor: "rgba(239, 68, 68, 0.48)",
+  },
+  recycleFlagText: {
+    color: palette.textPrimary,
+    fontSize: 12,
+    fontWeight: "700",
+  },
   modelBadge: {
     position: "absolute",
     bottom: -28,
@@ -839,7 +931,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "rgba(15, 23, 42, 0.75)",
+    backgroundColor: "rgba(4, 32, 20, 0.75)",
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 16,
@@ -859,7 +951,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    backgroundColor: "rgba(15, 23, 42, 0.7)",
+    backgroundColor: "rgba(4, 32, 20, 0.78)",
     borderRadius: 18,
     paddingHorizontal: 16,
     paddingVertical: 12,
@@ -870,7 +962,7 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: "rgba(56, 189, 248, 0.18)",
+    backgroundColor: "rgba(45, 211, 111, 0.22)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -893,16 +985,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 16,
-    backgroundColor: "rgba(34, 197, 94, 0.12)",
+    backgroundColor: "rgba(45, 211, 111, 0.18)",
   },
   impactTagText: {
-    color: palette.accent,
+    color: palette.textPrimary,
     fontSize: 12,
     fontWeight: "600",
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(2, 6, 23, 0.78)",
+    backgroundColor: "rgba(1, 15, 9, 0.78)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -943,7 +1035,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: "rgba(34, 197, 94, 0.12)",
+    backgroundColor: "rgba(45, 211, 111, 0.18)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -974,12 +1066,13 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   resultSheet: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 28,
     backgroundColor: palette.card,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    borderRadius: 28,
     padding: 24,
-    marginHorizontal: 12,
-    marginBottom: 110,
     borderWidth: 1,
     borderColor: palette.glassBorder,
     ...baseShadow,
@@ -1071,7 +1164,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: "rgba(34, 197, 94, 0.12)",
+    backgroundColor: "rgba(45, 211, 111, 0.18)",
     borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -1106,11 +1199,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
+  captureBarHidden: {
+    opacity: 0,
+    transform: [{ scale: 0.95 }],
+  },
   utilityButton: {
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: palette.card,
+    backgroundColor: "rgba(4, 32, 20, 0.86)",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -1122,9 +1219,9 @@ const styles = StyleSheet.create({
     borderRadius: 46,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(34, 197, 94, 0.22)",
+    backgroundColor: "rgba(45, 211, 111, 0.24)",
     borderWidth: 2,
-    borderColor: "rgba(34, 197, 94, 0.4)",
+    borderColor: "rgba(45, 211, 111, 0.45)",
   },
   captureButtonDisabled: {
     opacity: 0.6,
