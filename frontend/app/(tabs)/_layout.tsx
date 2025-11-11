@@ -11,6 +11,8 @@ const tabs = [
   { name: "profile", label: "Profile", icon: "person-circle-outline", route: "/(tabs)/profile" },
 ];
 
+const accentColor = "#2dd36f";
+
 const CustomTabBar = () => {
   const router = useRouter();
   const pathname = usePathname();
@@ -43,7 +45,7 @@ const CustomTabBar = () => {
                   <Ionicons
                     name={tab.icon as any}
                     size={22}
-                    color={active ? "#22c55e" : "rgba(226,232,240,0.7)"}
+                    color={active ? accentColor : "rgba(226,232,240,0.7)"}
                   />
                   <Text style={[styles.label, active && styles.activeLabel]}>{tab.label}</Text>
                 </TouchableOpacity>
@@ -56,7 +58,7 @@ const CustomTabBar = () => {
           onPress={() => router.push("/(tabs)/scan" as any)}
         >
           <View style={styles.centerButtonInner}>
-            <Ionicons name="scan" size={32} color="#0f172a" />
+            <Ionicons name="scan" size={32} color="#032814" />
           </View>
         </TouchableOpacity>
 
@@ -74,7 +76,7 @@ const CustomTabBar = () => {
                   <Ionicons
                     name={tab.icon as any}
                     size={22}
-                    color={active ? "#22c55e" : "rgba(226,232,240,0.7)"}
+                    color={active ? accentColor : "rgba(226,232,240,0.7)"}
                   />
                   <Text style={[styles.label, active && styles.activeLabel]}>{tab.label}</Text>
                 </TouchableOpacity>
@@ -103,7 +105,7 @@ export default function TabLayout() {
         <Tabs.Screen name="reward" />
         <Tabs.Screen name="profile" />
       </Tabs>
-      {pathname !== "/scan" && <CustomTabBar />}
+      {!pathname.startsWith("/(tabs)/scan") && <CustomTabBar />}
     </>
   );
 }
@@ -113,65 +115,67 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: 24,
+    bottom: 18,
     alignItems: "center",
   },
   container: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "rgba(2,6,23,0.9)",
-    borderRadius: 32,
-    paddingHorizontal: 22,
-    paddingVertical: 14,
-    width: "92%",
+    backgroundColor: "rgba(3, 31, 16, 0.96)",
+    borderRadius: 36,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    width: "94%",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 16 },
     shadowOpacity: 0.2,
     shadowRadius: 24,
     elevation: 16,
     borderWidth: 1,
-    borderColor: "rgba(148,163,184,0.25)",
+    borderColor: "rgba(36, 181, 101, 0.25)",
   },
   sideContainer: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    justifyContent: "space-evenly",
   },
   tab: {
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 8,
-    borderRadius: 18,
-    minWidth: 70,
+    borderRadius: 20,
+    flexGrow: 1,
+    minWidth: 0,
   },
   activeTab: {
-    backgroundColor: "rgba(34,197,94,0.15)",
+    backgroundColor: "rgba(45, 211, 111, 0.22)",
   },
   label: {
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 4,
     color: "rgba(226,232,240,0.7)",
     fontWeight: "600",
   },
   activeLabel: {
-    color: "#22c55e",
+    color: accentColor,
   },
   centerButton: {
     marginHorizontal: 12,
   },
   centerButtonInner: {
-    width: 74,
-    height: 74,
-    borderRadius: 37,
-    backgroundColor: "#22c55e",
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    backgroundColor: accentColor,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#22c55e",
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.35,
-    shadowRadius: 24,
-    elevation: 20,
+    shadowColor: accentColor,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.45,
+    shadowRadius: 28,
+    elevation: 22,
   },
 });
