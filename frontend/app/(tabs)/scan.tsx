@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -41,13 +41,195 @@ const palette = {
   cameraMask: "rgba(1, 15, 9, 0.5)",
 };
 
+const OVERLAY_CARD_WIDTH = Math.min(width * 0.8, 340);
+
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(Math.max(value, min), max);
+
+const formatItemName = (value: string) =>
+  value
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+type MaterialProfile = {
+  match: RegExp;
+  label: string;
+  recyclableSummary: string;
+  nonRecyclableSummary: string;
+  recycleSteps: string;
+  disposeSteps: string;
+  centerPrompt: string;
+};
+
+const MATERIAL_PROFILES: MaterialProfile[] = [
+  {
+    match: /(plastic|pet|hdpe|ldpe|poly|bottle|clamshell|cup|container)/i,
+    label: "Plastic packaging",
+    recyclableSummary:
+      "Plastic packaging detected. Clean PET and HDPE items are widely accepted curbside.",
+    nonRecyclableSummary:
+      "Plastic packaging detected. This variant should stay out of the recycling bin to prevent contamination.",
+    recycleSteps:
+      "Rinse the plastic, remove films or caps, let it dry, and sort with plastics #1-2.",
+    disposeSteps:
+      "Bag it with household waste or use specialty drop-offs that accept mixed plastics.",
+    centerPrompt:
+      "Check supermarket film-collection bins or municipal plastic drop-off depots.",
+  },
+  {
+    match: /(glass|bottle|jar)/i,
+    label: "Glass container",
+    recyclableSummary:
+      "Glass container detected. Rinsed bottles and jars can be recycled repeatedly.",
+    nonRecyclableSummary:
+      "Glass detected. Tempered or treated glass needs a specialist drop-off site.",
+    recycleSteps:
+      "Remove lids, rinse thoroughly, and sort by color if your center requests it.",
+    disposeSteps:
+      "Wrap safely and take it to a civic amenity site or follow local disposal rules.",
+    centerPrompt: "Use local bottle banks or glass igloos for quick drop-off points.",
+  },
+  {
+    match: /(paper|cardboard|carton|box|newspaper|magazine)/i,
+    label: "Paper & cardboard",
+    recyclableSummary:
+      "Paper product detected. Keep it dry and flat for easy curbside recycling.",
+    nonRecyclableSummary:
+      "Paper detected. Waxed or food-soiled paper should avoid the recycling stream.",
+    recycleSteps:
+      "Flatten boxes, remove tape, and stack clean paper together before recycling.",
+    disposeSteps:
+      "Place soiled paper in the trash or compost if accepted locally.",
+    centerPrompt: "Community recycling centers accept bundled cardboard and paper bales.",
+  },
+  {
+    match: /(metal|aluminum|steel|tin|can)/i,
+    label: "Metal packaging",
+    recyclableSummary:
+      "Metal packaging detected. Clean cans and lids recycle endlessly.",
+    nonRecyclableSummary:
+      "Metal detected. Greasy or sharp metals need special handling.",
+    recycleSteps:
+      "Rinse cans, remove labels if possible, and crush lightly to save space.",
+    disposeSteps:
+      "Wrap sharp edges and take to scrap metal or household waste facilities.",
+    centerPrompt: "Drop cans at curbside bins or local scrap yards for redemption.",
+  },
+  {
+    match: /(battery|phone|laptop|electronic|cable|charger)/i,
+    label: "Electronic waste",
+    recyclableSummary:
+      "Electronic item detected. Route it through an e-waste program for safe recovery.",
+    nonRecyclableSummary:
+      "Electronic item detected. Never place electronics in regular bins.",
+    recycleSteps:
+      "Store data securely, remove batteries, and take it to a certified e-waste center.",
+    disposeSteps:
+      "Bring it to municipal e-waste days or retailer take-back programs.",
+    centerPrompt: "Use EcoSort's finder to locate certified e-waste recycling partners.",
+  },
+  {
+    match: /(organic|food|compost|banana|apple|yard|garden|coffee|tea)/i,
+    label: "Organic material",
+    recyclableSummary:
+      "Organic material detected. Composting keeps nutrients in the cycle.",
+    nonRecyclableSummary:
+      "Organic waste detected. Keep it separate from recyclables to avoid contamination.",
+    recycleSteps:
+      "Collect with other food scraps and place in a green/compost bin or backyard composter.",
+    disposeSteps:
+      "Seal and send with municipal organics or general waste if composting isn't available.",
+    centerPrompt: "Check community gardens or municipal composting programs nearby.",
+  },
+  {
+    match: /(textile|fabric|clothing|cloth|garment)/i,
+    label: "Textiles",
+    recyclableSummary:
+      "Textile detected. Donate or recycle fabric to extend its life.",
+    nonRecyclableSummary:
+      "Textile detected. Damaged fabrics should be routed through textile recovery programs.",
+    recycleSteps:
+      "Wash, bag, and deliver to textile donation or recycling drop-offs.",
+    disposeSteps:
+      "Repurpose as cleaning rags or bring to textile-specific collection bins.",
+    centerPrompt: "Search for clothing donation bins or textile recovery hubs in your area.",
+  },
+];
+
+type MaterialInsights = {
+  label: string;
+  callout: string;
+  summary: string;
+  steps: string;
+  centerPrompt: string;
+  carbonFootprint: string;
+  impact: string;
+};
+
+const getMaterialInsights = (
+  itemType: string,
+  recyclable: boolean,
+  co2Impact: number
+): MaterialInsights => {
+  const profile = MATERIAL_PROFILES.find((entry) => entry.match.test(itemType));
+  const fallbackLabel = formatItemName(itemType || "Item");
+  const label = profile?.label ?? fallbackLabel;
+  const normalizedImpact = Number.isFinite(co2Impact)
+    ? Math.max(co2Impact, 0)
+    : 0;
+
+  const summary = recyclable
+    ? profile?.recyclableSummary ?? `${label} can be recycled after a quick clean.`
+    : profile?.nonRecyclableSummary ?? `${label} needs special handling to stay out of recycling bins.`;
+
+  const steps = recyclable
+    ? profile?.recycleSteps ?? `Clean the ${fallbackLabel.toLowerCase()} and place it with your recyclables.`
+    : profile?.disposeSteps ?? `Dispose of the ${fallbackLabel.toLowerCase()} according to local guidance.`;
+
+  const centerPrompt =
+    profile?.centerPrompt ?? "Open the EcoSort guide to see nearby recycling and drop-off locations.";
+
+  const carbonFootprint =
+    normalizedImpact > 0
+      ? `${normalizedImpact.toFixed(2)}kg CO₂ impact`
+      : "Trace CO₂ impact";
+
+  const impact = normalizedImpact > 0
+    ? recyclable
+      ? `Diverts ~${normalizedImpact.toFixed(2)}kg CO₂`
+      : `Avoids ${normalizedImpact.toFixed(2)}kg CO₂ when disposed correctly`
+    : recyclable
+    ? "Positive recycling impact"
+    : "Dispose responsibly";
+
+  const callout = recyclable
+    ? `${label} ready to recycle`
+    : `${label} needs special handling`;
+
+  return {
+    label,
+    callout,
+    summary,
+    steps,
+    centerPrompt,
+    carbonFootprint,
+    impact,
+  };
+};
+
 type ScanResult = {
   item: string;
   recyclable: boolean;
   confidence: number;
-  instructions: string;
   impact: string;
   category: string;
+  carbonFootprint: string;
+  materialSummary: string;
+  recyclingSteps: string;
+  centerPrompt: string;
+  callout: string;
   bbox?: number[];
   fallback_model?: boolean;
   image_path?: string;
@@ -168,15 +350,26 @@ const Scan = () => {
 
       const response = await apiService.classifyItem(photo.base64!);
 
+      const co2Impact = Number.isFinite(response.co2_impact)
+        ? response.co2_impact
+        : 0;
+      const insights = getMaterialInsights(
+        response.item_type,
+        response.recyclable,
+        co2Impact
+      );
+
       const result: ScanResult = {
-        item: response.item_type,
+        item: formatItemName(response.item_type),
         recyclable: response.recyclable,
         confidence: Math.round(response.confidence * 100),
-        instructions: response.recyclable
-          ? "Clean the item and place it into your recycling bin."
-          : "Dispose of this item in general waste to avoid contamination.",
-        impact: `Saves ${response.co2_impact}kg CO₂`,
-        category: response.item_type,
+        impact: insights.impact,
+        category: insights.label,
+        carbonFootprint: insights.carbonFootprint,
+        materialSummary: insights.summary,
+        recyclingSteps: insights.steps,
+        centerPrompt: insights.centerPrompt,
+        callout: insights.callout,
         bbox: response.bbox,
         fallback_model: response.fallback_model,
         image_path: response.image_path || "",
@@ -225,15 +418,38 @@ const Scan = () => {
       : "alert-circle"
     : "sparkles-outline";
   const calloutMessage = scannedItem
-    ? scannedItem.recyclable
-      ? "This item can be recycled. Follow the guidance below."
-      : "This item is not recyclable. See safe disposal tips below."
+    ? scannedItem.callout
     : "Align the item within the frame to analyze recyclability";
   const calloutIconColor = scannedItem
     ? scannedItem.recyclable
       ? palette.accent
       : palette.danger
     : palette.accentSoft;
+
+  const overlayPositionStyle = useMemo(() => {
+    if (!scannedItem?.bbox || scannedItem.bbox.length < 4) {
+      return {
+        bottom: "16%",
+        left: "50%",
+        transform: [{ translateX: -OVERLAY_CARD_WIDTH / 2 }],
+      };
+    }
+
+    const [x1, y1, x2] = scannedItem.bbox;
+    const centerXPercent = clamp(((x1 + x2) / 2) * 100, 12, 88);
+    const topPercent = clamp(y1 * 100 - 12, 6, 70);
+
+    return {
+      top: `${topPercent}%`,
+      left: `${centerXPercent}%`,
+      transform: [{ translateX: -OVERLAY_CARD_WIDTH / 2 }],
+    };
+  }, [scannedItem]);
+
+  const hasBoundingBox = useMemo(
+    () => Boolean(scannedItem?.bbox && scannedItem.bbox.length >= 4),
+    [scannedItem]
+  );
 
   const scanLineTranslate = scanLineAnim.interpolate({
     inputRange: [0, 1],
@@ -397,21 +613,20 @@ const Scan = () => {
                 </View>
               )}
 
-              {showOverlays &&
-                scannedItem?.bbox &&
-                scannedItem.bbox.length >= 4 && (
-                  <View style={styles.boundingBoxContainer}>
+              {showOverlays && scannedItem && (
+                <View style={styles.boundingBoxContainer} pointerEvents="none">
+                  {hasBoundingBox && (
                     <View
                       style={[
                         styles.boundingBox,
                         {
-                          left: `${scannedItem.bbox[0] * 100}%`,
-                          top: `${scannedItem.bbox[1] * 100}%`,
+                          left: `${scannedItem.bbox![0] * 100}%`,
+                          top: `${scannedItem.bbox![1] * 100}%`,
                           width: `${
-                            (scannedItem.bbox[2] - scannedItem.bbox[0]) * 100
+                            (scannedItem.bbox![2] - scannedItem.bbox![0]) * 100
                           }%`,
                           height: `${
-                            (scannedItem.bbox[3] - scannedItem.bbox[1]) * 100
+                            (scannedItem.bbox![3] - scannedItem.bbox![1]) * 100
                           }%`,
                           borderColor: scannedItem.recyclable
                             ? palette.accent
@@ -462,16 +677,16 @@ const Scan = () => {
                         <Ionicons
                           name={
                             scannedItem.recyclable
-                              ? "checkmark-circle"
-                              : "close-circle"
+                              ? "repeat-outline"
+                              : "trash-bin-outline"
                           }
                           size={14}
                           color={palette.textPrimary}
                         />
                         <Text style={styles.recycleFlagText}>
                           {scannedItem.recyclable
-                            ? "Recycle this item"
-                            : "Do not recycle"}
+                            ? "Ready to recycle"
+                            : "Dispose safely"}
                         </Text>
                       </View>
                       {scannedItem.fallback_model && (
@@ -487,8 +702,135 @@ const Scan = () => {
                         </View>
                       )}
                     </View>
+                  )}
+
+                  <View
+                    style={[
+                      styles.arInsightPanel,
+                      overlayPositionStyle,
+                      scannedItem.recyclable
+                        ? styles.arInsightPanelPositive
+                        : styles.arInsightPanelNegative,
+                    ]}
+                  >
+                    <View style={styles.arInsightHeader}>
+                      <View
+                        style={[
+                          styles.arInsightIcon,
+                          scannedItem.recyclable
+                            ? styles.arInsightIconPositive
+                            : styles.arInsightIconNegative,
+                        ]}
+                      >
+                        <Ionicons
+                          name={
+                            scannedItem.recyclable
+                              ? "leaf-outline"
+                              : "alert-circle-outline"
+                          }
+                          size={18}
+                          color={palette.textPrimary}
+                        />
+                      </View>
+                      <View style={styles.arInsightHeaderCopy}>
+                        <Text style={styles.arInsightTitle} numberOfLines={1}>
+                          {scannedItem.item}
+                        </Text>
+                        <Text style={styles.arInsightSubtitle} numberOfLines={2}>
+                          {scannedItem.materialSummary}
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.arInsightStatus,
+                          scannedItem.recyclable
+                            ? styles.arInsightStatusPositive
+                            : styles.arInsightStatusNegative,
+                        ]}
+                      >
+                        <Text style={styles.arInsightStatusText}>
+                          {scannedItem.recyclable
+                            ? "Recyclable"
+                            : "Special disposal"}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {!hasBoundingBox && scannedItem.fallback_model && (
+                      <View style={styles.arInsightFallbackBadge}>
+                        <Ionicons
+                          name="hardware-chip-outline"
+                          size={12}
+                          color={palette.textPrimary}
+                        />
+                        <Text style={styles.modelBadgeText}>Fallback model</Text>
+                      </View>
+                    )}
+
+                    <View style={styles.arInsightMetaRow}>
+                      <View style={styles.arInsightMetaChip}>
+                        <Ionicons
+                          name="leaf-outline"
+                          size={14}
+                          color={palette.accent}
+                        />
+                        <Text style={styles.arInsightMetaText}>
+                          {scannedItem.carbonFootprint}
+                        </Text>
+                      </View>
+                      <View style={styles.arInsightMetaChip}>
+                        <Ionicons
+                          name="speedometer-outline"
+                          size={14}
+                          color={palette.textPrimary}
+                        />
+                        <Text style={styles.arInsightMetaText}>
+                          {scannedItem.confidence}% confidence
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.arInsightSection}>
+                      <Text style={styles.arInsightSectionTitle}>
+                        {scannedItem.recyclable
+                          ? "How to recycle"
+                          : "Safe disposal"}
+                      </Text>
+                      <Text style={styles.arInsightSectionText} numberOfLines={3}>
+                        {scannedItem.recyclingSteps}
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      style={styles.arInsightAction}
+                      onPress={() => router.push("/(tabs)/guide" as any)}
+                    >
+                      <Ionicons
+                        name="location-outline"
+                        size={18}
+                        color={palette.textPrimary}
+                      />
+                      <View style={styles.arInsightActionCopy}>
+                        <Text style={styles.arInsightActionTitle}>
+                          Connect to a recycling center
+                        </Text>
+                        <Text
+                          style={styles.arInsightActionSubtitle}
+                          numberOfLines={2}
+                        >
+                          {scannedItem.centerPrompt}
+                        </Text>
+                      </View>
+                      <Ionicons
+                        name="chevron-forward"
+                        size={18}
+                        color={palette.textSecondary}
+                      />
+                    </TouchableOpacity>
                   </View>
-                )}
+                </View>
+              )}
 
               <View style={styles.bottomOverlay}>
                 {scannedItem?.impact && (
@@ -617,34 +959,78 @@ const Scan = () => {
             )}
           </View>
 
-          {scannedItem && (
-            <>
-              <Text style={styles.resultTitle}>{scannedItem.item}</Text>
-              <Text style={styles.resultSubtitle}>{scannedItem.category}</Text>
+            <Text style={styles.resultTitle}>{scannedItem.item}</Text>
+            <Text style={styles.resultSubtitle}>
+              {scannedItem.materialSummary}
+            </Text>
 
-              <View style={styles.metricsRow}>
-                <View style={styles.metricCard}>
-                  <Text style={styles.metricLabel}>Confidence</Text>
-                  <Text style={styles.metricValue}>
-                    {scannedItem.confidence}%
-                  </Text>
-                </View>
-                <View style={styles.metricCard}>
-                  <Text style={styles.metricLabel}>Model</Text>
-                  <Text style={styles.metricValue}>
-                    {scannedItem.fallback_model ? "Fallback" : "YOLO11"}
-                  </Text>
-                </View>
-                <View style={styles.metricCard}>
-                  <Text style={styles.metricLabel}>Impact</Text>
-                  <Text style={styles.metricValue}>{scannedItem.impact}</Text>
-                </View>
+            <View style={styles.metricsRow}>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricLabel}>Confidence</Text>
+                <Text style={styles.metricValue}>
+                  {scannedItem.confidence}%
+                </Text>
+              </View>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricLabel}>Carbon impact</Text>
+                <Text style={styles.metricValue}>
+                  {scannedItem.carbonFootprint}
+                </Text>
+                <Text style={styles.metricCaption}>{scannedItem.impact}</Text>
+              </View>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricLabel}>Material</Text>
+                <Text style={styles.metricValue}>{scannedItem.category}</Text>
+                <Text style={styles.metricCaption}>
+                  {scannedItem.fallback_model ? "Fallback model" : "YOLO11 model"}
+                </Text>
               </View>
 
-              <View style={styles.instructionsCard}>
-                <Text style={styles.instructionsTitle}>Next steps</Text>
-                <Text style={styles.instructionsText}>
-                  {scannedItem.instructions}
+            <View style={styles.instructionsCard}>
+              <Text style={styles.instructionsTitle}>
+                {scannedItem.recyclable ? "How to recycle" : "Safe disposal"}
+              </Text>
+              <Text style={styles.instructionsText}>
+                {scannedItem.recyclingSteps}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              accessibilityRole="button"
+              style={styles.centerCard}
+              onPress={() => router.push("/(tabs)/guide" as any)}
+            >
+              <View style={styles.centerIconWrapper}>
+                <Ionicons
+                  name="navigate-circle-outline"
+                  size={20}
+                  color={palette.textPrimary}
+                />
+              </View>
+              <View style={styles.centerCopy}>
+                <Text style={styles.centerTitle}>
+                  Connect to recycling centers
+                </Text>
+                <Text style={styles.centerSubtitle} numberOfLines={2}>
+                  {scannedItem.centerPrompt}
+                </Text>
+              </View>
+              <Ionicons
+                name="chevron-forward"
+                size={18}
+                color={palette.textSecondary}
+              />
+            </TouchableOpacity>
+
+            {scannedItem.image_path && (
+              <View style={styles.storageRow}>
+                <Ionicons
+                  name="cloud-upload-outline"
+                  size={16}
+                  color={palette.accent}
+                />
+                <Text style={styles.storageText}>
+                  Image saved for training improvements
                 </Text>
               </View>
 
@@ -707,5 +1093,752 @@ const Scan = () => {
   );
 };
 
+const baseShadow = {
+  shadowColor: palette.accent,
+  shadowOffset: { width: 0, height: 12 },
+  shadowOpacity: 0.35,
+  shadowRadius: 32,
+  elevation: 22,
+};
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: palette.backdrop,
+  },
+  cameraShell: {
+    flex: 1,
+    backgroundColor: palette.surface,
+  },
+  overlayContainer: {
+    flex: 1,
+    backgroundColor: palette.cameraMask,
+    justifyContent: "space-between",
+  },
+  topControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 18,
+  },
+  headerMeta: {
+    alignItems: "center",
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: palette.textPrimary,
+  },
+  headerSubtitle: {
+    fontSize: 12,
+    color: palette.textSecondary,
+    marginTop: 2,
+  },
+  topActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  roundButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(4, 32, 20, 0.72)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+  },
+  reticleWrapper: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  reticle: {
+    width: RETICLE_SIZE,
+    height: RETICLE_SIZE,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(45, 211, 111, 0.35)",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(4, 32, 20, 0.28)",
+  },
+  corner: {
+    position: "absolute",
+    width: 40,
+    height: 40,
+    borderColor: palette.accent,
+  },
+  topLeft: {
+    top: 0,
+    left: 0,
+    borderLeftWidth: 4,
+    borderTopWidth: 4,
+    borderTopLeftRadius: 20,
+  },
+  topRight: {
+    top: 0,
+    right: 0,
+    borderRightWidth: 4,
+    borderTopWidth: 4,
+    borderTopRightRadius: 20,
+  },
+  bottomLeft: {
+    bottom: 0,
+    left: 0,
+    borderLeftWidth: 4,
+    borderBottomWidth: 4,
+    borderBottomLeftRadius: 20,
+  },
+  bottomRight: {
+    bottom: 0,
+    right: 0,
+    borderRightWidth: 4,
+    borderBottomWidth: 4,
+    borderBottomRightRadius: 20,
+  },
+  gridLineHorizontal: {
+    position: "absolute",
+    left: 24,
+    right: 24,
+    height: 1,
+    backgroundColor: "rgba(45, 211, 111, 0.2)",
+    top: RETICLE_SIZE / 3,
+  },
+  gridLineHorizontalSecondary: {
+    top: undefined,
+    bottom: RETICLE_SIZE / 3,
+  },
+  gridLineVertical: {
+    position: "absolute",
+    top: 24,
+    bottom: 24,
+    width: 1,
+    backgroundColor: "rgba(45, 211, 111, 0.2)",
+    left: RETICLE_SIZE / 3,
+  },
+  gridLineVerticalSecondary: {
+    left: undefined,
+    right: RETICLE_SIZE / 3,
+  },
+  scanLine: {
+    position: "absolute",
+    left: 18,
+    right: 18,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: "rgba(45, 211, 111, 0.85)",
+  },
+  callout: {
+    marginTop: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    backgroundColor: "rgba(4, 32, 20, 0.78)",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+    gap: 10,
+  },
+  calloutSuccess: {
+    backgroundColor: "rgba(45, 211, 111, 0.24)",
+    borderColor: "rgba(45, 211, 111, 0.38)",
+  },
+  calloutDanger: {
+    backgroundColor: "rgba(239, 68, 68, 0.22)",
+    borderColor: "rgba(239, 68, 68, 0.42)",
+  },
+  calloutText: {
+    color: palette.textPrimary,
+    fontSize: 13,
+    flexShrink: 1,
+  },
+  calloutResultText: {
+    fontWeight: "600",
+  },
+  boundingBoxContainer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  boundingBox: {
+    position: "absolute",
+    borderWidth: 2,
+    borderRadius: 18,
+  },
+  boundingCornerBase: {
+    position: "absolute",
+    width: 22,
+    height: 22,
+    borderColor: palette.textPrimary,
+    borderStyle: "solid",
+    opacity: 0.75,
+  },
+  boundingCornerTL: {
+    top: -2,
+    left: -2,
+    borderTopWidth: 3,
+    borderLeftWidth: 3,
+    borderTopLeftRadius: 10,
+  },
+  boundingCornerTR: {
+    top: -2,
+    right: -2,
+    borderTopWidth: 3,
+    borderRightWidth: 3,
+    borderTopRightRadius: 10,
+  },
+  boundingCornerBL: {
+    bottom: -2,
+    left: -2,
+    borderBottomWidth: 3,
+    borderLeftWidth: 3,
+    borderBottomLeftRadius: 10,
+  },
+  boundingCornerBR: {
+    bottom: -2,
+    right: -2,
+    borderBottomWidth: 3,
+    borderRightWidth: 3,
+    borderBottomRightRadius: 10,
+  },
+  arInsightPanel: {
+    position: "absolute",
+    width: OVERLAY_CARD_WIDTH,
+    backgroundColor: "rgba(4, 32, 20, 0.92)",
+    borderRadius: 24,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+    gap: 14,
+    shadowColor: palette.accent,
+    shadowOpacity: 0.32,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 18,
+    zIndex: 5,
+  },
+  arInsightPanelPositive: {
+    borderColor: "rgba(45, 211, 111, 0.38)",
+  },
+  arInsightPanelNegative: {
+    borderColor: "rgba(239, 68, 68, 0.35)",
+    shadowColor: palette.danger,
+  },
+  arInsightHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  arInsightIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+  },
+  arInsightIconPositive: {
+    backgroundColor: "rgba(45, 211, 111, 0.22)",
+    borderColor: "rgba(45, 211, 111, 0.45)",
+  },
+  arInsightIconNegative: {
+    backgroundColor: "rgba(239, 68, 68, 0.22)",
+    borderColor: "rgba(239, 68, 68, 0.45)",
+  },
+  arInsightHeaderCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  arInsightTitle: {
+    color: palette.textPrimary,
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  arInsightSubtitle: {
+    color: palette.textSecondary,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  arInsightStatus: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  arInsightStatusPositive: {
+    backgroundColor: "rgba(45, 211, 111, 0.22)",
+  },
+  arInsightStatusNegative: {
+    backgroundColor: "rgba(239, 68, 68, 0.22)",
+  },
+  arInsightStatusText: {
+    color: palette.textPrimary,
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  arInsightMetaRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  arInsightMetaChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: "rgba(15, 23, 42, 0.7)",
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+  },
+  arInsightMetaText: {
+    color: palette.textPrimary,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  arInsightSection: {
+    gap: 6,
+  },
+  arInsightSectionTitle: {
+    color: palette.textPrimary,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  arInsightSectionText: {
+    color: palette.textSecondary,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  arInsightAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 12,
+    borderRadius: 18,
+    backgroundColor: "rgba(15, 23, 42, 0.78)",
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+  },
+  arInsightActionCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  arInsightActionTitle: {
+    color: palette.textPrimary,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  arInsightActionSubtitle: {
+    color: palette.textSecondary,
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  confidenceBadge: {
+    position: "absolute",
+    top: -32,
+    left: 0,
+    backgroundColor: palette.card,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+  },
+  confidenceBadgeText: {
+    color: palette.textPrimary,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  recycleFlag: {
+    position: "absolute",
+    left: 12,
+    bottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  recycleFlagPositive: {
+    backgroundColor: "rgba(45, 211, 111, 0.28)",
+    borderColor: "rgba(45, 211, 111, 0.5)",
+  },
+  recycleFlagNegative: {
+    backgroundColor: "rgba(239, 68, 68, 0.26)",
+    borderColor: "rgba(239, 68, 68, 0.48)",
+  },
+  recycleFlagText: {
+    color: palette.textPrimary,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  modelBadge: {
+    position: "absolute",
+    bottom: -28,
+    right: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(4, 32, 20, 0.75)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+  },
+  arInsightFallbackBadge: {
+    marginTop: 12,
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(4, 32, 20, 0.75)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+  },
+  modelBadgeText: {
+    color: palette.textPrimary,
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  bottomOverlay: {
+    paddingHorizontal: 18,
+    paddingBottom: 24,
+  },
+  modelStatus: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "rgba(4, 32, 20, 0.78)",
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+  },
+  statusIconWrapper: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(45, 211, 111, 0.22)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  statusTitle: {
+    color: palette.textPrimary,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  statusSubtitle: {
+    color: palette.textSecondary,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  impactTag: {
+    marginTop: 12,
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: "rgba(45, 211, 111, 0.18)",
+  },
+  impactTagText: {
+    color: palette.textPrimary,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(1, 15, 9, 0.78)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loadingCard: {
+    width: RETICLE_SIZE,
+    backgroundColor: palette.card,
+    borderRadius: 22,
+    paddingVertical: 28,
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+  },
+  loadingTitle: {
+    color: palette.textPrimary,
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  loadingText: {
+    color: palette.textSecondary,
+    fontSize: 13,
+    textAlign: "center",
+    paddingHorizontal: 28,
+  },
+  permissionCard: {
+    flex: 1,
+    margin: 24,
+    borderRadius: 24,
+    backgroundColor: palette.card,
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 16,
+    paddingHorizontal: 24,
+  },
+  permissionIconWrapper: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: "rgba(45, 211, 111, 0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  permissionTitle: {
+    color: palette.textPrimary,
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  permissionText: {
+    color: palette.textSecondary,
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  permissionButton: {
+    marginTop: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: palette.accent,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 16,
+  },
+  permissionButtonText: {
+    color: palette.textPrimary,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  resultSheet: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 28,
+    backgroundColor: palette.card,
+    borderRadius: 28,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+    ...baseShadow,
+  },
+  resultContent: {
+    gap: 18,
+  },
+  resultHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  resultPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 18,
+  },
+  resultPillText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  secondaryButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: "rgba(148, 163, 184, 0.16)",
+  },
+  secondaryButtonText: {
+    color: palette.textSecondary,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  resultTitle: {
+    color: palette.textPrimary,
+    fontSize: 24,
+    fontWeight: "700",
+  },
+  resultSubtitle: {
+    color: palette.textSecondary,
+    fontSize: 14,
+  },
+  metricsRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  metricCard: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+  },
+  metricLabel: {
+    color: palette.textSecondary,
+    fontSize: 12,
+    marginBottom: 6,
+  },
+  metricValue: {
+    color: palette.textPrimary,
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  metricCaption: {
+    color: palette.textSecondary,
+    fontSize: 11,
+    marginTop: 4,
+  },
+  instructionsCard: {
+    backgroundColor: "rgba(15, 23, 42, 0.65)",
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+  },
+  instructionsTitle: {
+    color: palette.textPrimary,
+    fontSize: 15,
+    fontWeight: "700",
+    marginBottom: 8,
+  },
+  instructionsText: {
+    color: palette.textSecondary,
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  centerCard: {
+    marginTop: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "rgba(15, 23, 42, 0.65)",
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+  },
+  centerIconWrapper: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(45, 211, 111, 0.18)",
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+  },
+  centerCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  centerTitle: {
+    color: palette.textPrimary,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  centerSubtitle: {
+    color: palette.textSecondary,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  storageRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(45, 211, 111, 0.18)",
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  storageText: {
+    color: palette.accent,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  resultPlaceholder: {
+    alignItems: "center",
+    gap: 10,
+  },
+  placeholderTitle: {
+    color: palette.textPrimary,
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  placeholderText: {
+    color: palette.textSecondary,
+    fontSize: 13,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  captureBar: {
+    position: "absolute",
+    bottom: 24,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  captureBarHidden: {
+    opacity: 0,
+    transform: [{ scale: 0.95 }],
+  },
+  utilityButton: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "rgba(4, 32, 20, 0.86)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: palette.glassBorder,
+  },
+  captureButton: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(45, 211, 111, 0.24)",
+    borderWidth: 2,
+    borderColor: "rgba(45, 211, 111, 0.45)",
+  },
+  captureButtonDisabled: {
+    opacity: 0.6,
+  },
+  captureInner: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: palette.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});
 
 export default Scan;
