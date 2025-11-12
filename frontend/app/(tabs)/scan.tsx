@@ -10,11 +10,11 @@ import {
   Animated,
   Easing,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { apiService } from "../../utils/api";
+import { styles } from "./scan.styles";
 
 const { width, height } = Dimensions.get("window");
 const RETICLE_SIZE = Math.min(width * 0.88, height * 0.64);
@@ -242,8 +242,10 @@ const Scan = () => {
   const [isScanning, setIsScanning] = useState(false);
   const [scannedItem, setScannedItem] = useState<ScanResult | null>(null);
   const [showOverlays, setShowOverlays] = useState(true);
+  const [showReticle, setShowReticle] = useState(true);
   const [torchEnabled, setTorchEnabled] = useState(false);
   const [facing, setFacing] = useState<"back" | "front">("back");
+  const [cameraReady, setCameraReady] = useState(false);
 
   const scanPulseAnim = useRef(new Animated.Value(1)).current;
   const scanLineAnim = useRef(new Animated.Value(0)).current;
@@ -274,7 +276,10 @@ const Scan = () => {
     );
 
     pulseAnimation.start();
-    return () => pulseAnimation.stop();
+    return () => {
+      pulseAnimation.stop();
+      scanPulseAnim.setValue(1);
+    };
   }, [scanPulseAnim]);
 
   useEffect(() => {
@@ -296,16 +301,25 @@ const Scan = () => {
     );
 
     lineAnimation.start();
-    return () => lineAnimation.stop();
+    return () => {
+      lineAnimation.stop();
+      scanLineAnim.setValue(0);
+    };
   }, [scanLineAnim]);
 
   useEffect(() => {
-    Animated.timing(resultSheetAnim, {
+    const animation = Animated.timing(resultSheetAnim, {
       toValue: scannedItem ? 1 : 0,
       duration: 360,
       easing: Easing.out(Easing.ease),
       useNativeDriver: true,
-    }).start();
+    });
+
+    animation.start();
+    return () => {
+      animation.stop();
+      resultSheetAnim.setValue(0);
+    };
   }, [scannedItem, resultSheetAnim]);
 
   const handleScan = async () => {
@@ -317,7 +331,7 @@ const Scan = () => {
       return;
     }
 
-    if (!cameraRef.current) {
+    if (!cameraReady || !cameraRef.current) {
       Alert.alert("Error", "Camera not ready");
       return;
     }
@@ -326,6 +340,9 @@ const Scan = () => {
     setScannedItem(null);
 
     try {
+      if (!cameraRef.current) {
+        throw new Error("Camera ref is null");
+      }
       const photo = await cameraRef.current.takePictureAsync({
         base64: true,
         quality: 0.5,
@@ -383,6 +400,10 @@ const Scan = () => {
     setShowOverlays((prev) => !prev);
   };
 
+  const toggleReticle = () => {
+    setShowReticle((prev) => !prev);
+  };
+
   const toggleTorch = () => {
     setTorchEnabled((prev) => !prev);
   };
@@ -437,11 +458,11 @@ const Scan = () => {
 
   const resultTranslate = resultSheetAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [280, 0],
+    outputRange: [400, 0],
   });
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.safeArea}>
       <View style={styles.cameraShell}>
         {permission?.granted ? (
           <CameraView
@@ -449,6 +470,7 @@ const Scan = () => {
             style={StyleSheet.absoluteFillObject}
             facing={facing}
             enableTorch={torchEnabled}
+            onCameraReady={() => setCameraReady(true)}
           >
             <View style={styles.overlayContainer}>
               <View style={styles.topControls}>
@@ -508,64 +530,88 @@ const Scan = () => {
                 </View>
               </View>
 
-              <View style={styles.reticleWrapper}>
-                <Animated.View
-                  style={[
-                    styles.reticle,
-                    { transform: [{ scale: scanPulseAnim }] },
-                  ]}
-                >
-                  {RETICLE_CORNERS.map((corner) => (
-                    <View
-                      key={corner}
-                      style={[styles.corner, styles[corner]]}
+              <View style={styles.statusContainer}>
+                <View style={styles.modelStatus}>
+                  <View style={styles.statusIconWrapper}>
+                    <Ionicons
+                      name="radio-outline"
+                      size={16}
+                      color={palette.textPrimary}
                     />
-                  ))}
-                  <View style={styles.gridLineHorizontal} />
-                  <View
-                    style={[
-                      styles.gridLineHorizontal,
-                      styles.gridLineHorizontalSecondary,
-                    ]}
-                  />
-                  <View style={styles.gridLineVertical} />
-                  <View
-                    style={[
-                      styles.gridLineVertical,
-                      styles.gridLineVerticalSecondary,
-                    ]}
-                  />
-                  <Animated.View
-                    style={[
-                      styles.scanLine,
-                      { transform: [{ translateY: scanLineTranslate }] },
-                    ]}
-                  />
-                </Animated.View>
-                <View
-                  style={[
-                    styles.callout,
-                    scannedItem &&
-                      (scannedItem.recyclable
-                        ? styles.calloutSuccess
-                        : styles.calloutDanger),
-                  ]}
-                >
-                  <Ionicons
-                    name={calloutIcon as any}
-                    size={18}
-                    color={calloutIconColor}
-                  />
-                  <Text
-                    style={[
-                      styles.calloutText,
-                      scannedItem && styles.calloutResultText,
-                    ]}
-                  >
-                    {calloutMessage}
-                  </Text>
+                  </View>
+                  <View style={styles.statusTextContainer}>
+                    <Text style={styles.statusTitle}>Live analysis</Text>
+                    <Text style={styles.statusSubtitle}>
+                      {isScanning
+                        ? "Running YOLO11 inference"
+                        : scannedItem
+                        ? `Confidence ${scannedItem.confidence}%`
+                        : "Tap capture to start scanning"}
+                    </Text>
+                  </View>
                 </View>
               </View>
+
+              {showReticle && (
+                <View style={styles.reticleWrapper}>
+                  <Animated.View
+                    style={[
+                      styles.reticle,
+                      { transform: [{ scale: scanPulseAnim }] },
+                    ]}
+                  >
+                    {RETICLE_CORNERS.map((corner) => (
+                      <View
+                        key={corner}
+                        style={[styles.corner, styles[corner]]}
+                      />
+                    ))}
+                    <View style={styles.gridLineHorizontal} />
+                    <View
+                      style={[
+                        styles.gridLineHorizontal,
+                        styles.gridLineHorizontalSecondary,
+                      ]}
+                    />
+                    <View style={styles.gridLineVertical} />
+                    <View
+                      style={[
+                        styles.gridLineVertical,
+                        styles.gridLineVerticalSecondary,
+                      ]}
+                    />
+                    <Animated.View
+                      style={[
+                        styles.scanLine,
+                        { transform: [{ translateY: scanLineTranslate }] },
+                      ]}
+                    />
+                  </Animated.View>
+                  <View
+                    style={[
+                      styles.callout,
+                      scannedItem &&
+                        (scannedItem.recyclable
+                          ? styles.calloutSuccess
+                          : styles.calloutDanger),
+                    ]}
+                  >
+                    <Ionicons
+                      name={calloutIcon as any}
+                      size={18}
+                      color={calloutIconColor}
+                    />
+                    <Text
+                      style={[
+                        styles.calloutText,
+                        scannedItem && styles.calloutResultText,
+                      ]}
+                    >
+                      {calloutMessage}
+                    </Text>
+                  </View>
+                </View>
+              )}
 
               {showOverlays && scannedItem && (
                 <View style={styles.boundingBoxContainer} pointerEvents="none">
@@ -787,25 +833,6 @@ const Scan = () => {
               )}
 
               <View style={styles.bottomOverlay}>
-                <View style={styles.modelStatus}>
-                  <View style={styles.statusIconWrapper}>
-                    <Ionicons
-                      name="radio-outline"
-                      size={16}
-                      color={palette.textPrimary}
-                    />
-                  </View>
-                  <View>
-                    <Text style={styles.statusTitle}>Live analysis</Text>
-                    <Text style={styles.statusSubtitle}>
-                      {isScanning
-                        ? "Running YOLO11 inference"
-                        : scannedItem
-                        ? `Confidence ${scannedItem.confidence}%`
-                        : "Tap capture to start scanning"}
-                    </Text>
-                  </View>
-                </View>
                 {scannedItem?.impact && (
                   <View style={styles.impactTag}>
                     <Ionicons
@@ -867,41 +894,57 @@ const Scan = () => {
           },
         ]}
       >
-        {scannedItem ? (
-          <View style={styles.resultContent}>
-            <View style={styles.resultHeader}>
-              <View
-                style={[
-                  styles.resultPill,
-                  {
-                    backgroundColor: scannedItem.recyclable
+        <View style={styles.resultContent}>
+          <View style={styles.resultHeader}>
+            <View
+              style={[
+                styles.resultPill,
+                {
+                  backgroundColor: scannedItem
+                    ? scannedItem.recyclable
                       ? "rgba(34, 197, 94, 0.14)"
-                      : "rgba(239, 68, 68, 0.14)",
+                      : "rgba(239, 68, 68, 0.14)"
+                    : "rgba(148, 163, 184, 0.1)",
+                },
+              ]}
+            >
+              <Ionicons
+                name={
+                  scannedItem
+                    ? scannedItem.recyclable
+                      ? "checkmark-circle"
+                      : "close-circle"
+                    : "scan-circle-outline"
+                }
+                size={18}
+                color={
+                  scannedItem
+                    ? scannedItem.recyclable
+                      ? palette.accent
+                      : palette.danger
+                    : palette.textSecondary
+                }
+              />
+              <Text
+                style={[
+                  styles.resultPillText,
+                  {
+                    color: scannedItem
+                      ? scannedItem.recyclable
+                        ? palette.accent
+                        : palette.danger
+                      : palette.textSecondary,
                   },
                 ]}
               >
-                <Ionicons
-                  name={
-                    scannedItem.recyclable ? "checkmark-circle" : "close-circle"
-                  }
-                  size={18}
-                  color={
-                    scannedItem.recyclable ? palette.accent : palette.danger
-                  }
-                />
-                <Text
-                  style={[
-                    styles.resultPillText,
-                    {
-                      color: scannedItem.recyclable
-                        ? palette.accent
-                        : palette.danger,
-                    },
-                  ]}
-                >
-                  {scannedItem.recyclable ? "Recyclable" : "Not recyclable"}
-                </Text>
-              </View>
+                {scannedItem
+                  ? scannedItem.recyclable
+                    ? "Recyclable"
+                    : "Not recyclable"
+                  : "Ready to scan"}
+              </Text>
+            </View>
+            {scannedItem && (
               <TouchableOpacity
                 onPress={handleRescan}
                 style={styles.secondaryButton}
@@ -913,7 +956,8 @@ const Scan = () => {
                 />
                 <Text style={styles.secondaryButtonText}>Scan again</Text>
               </TouchableOpacity>
-            </View>
+            )}
+          </View>
 
             <Text style={styles.resultTitle}>{scannedItem.item}</Text>
             <Text style={styles.resultSubtitle}>
@@ -941,7 +985,6 @@ const Scan = () => {
                   {scannedItem.fallback_model ? "Fallback model" : "YOLO11 model"}
                 </Text>
               </View>
-            </View>
 
             <View style={styles.instructionsCard}>
               <Text style={styles.instructionsTitle}>
@@ -990,22 +1033,22 @@ const Scan = () => {
                   Image saved for training improvements
                 </Text>
               </View>
-            )}
-          </View>
-        ) : (
-          <View style={styles.resultPlaceholder}>
-            <Ionicons
-              name="scan-circle-outline"
-              size={32}
-              color={palette.textMuted}
-            />
-            <Text style={styles.placeholderTitle}>Ready when you are</Text>
-            <Text style={styles.placeholderText}>
-              Position your item in the frame and tap the capture button to
-              detect its material instantly.
-            </Text>
-          </View>
-        )}
+
+              {scannedItem.image_path && (
+                <View style={styles.storageRow}>
+                  <Ionicons
+                    name="cloud-upload-outline"
+                    size={16}
+                    color={palette.accent}
+                  />
+                  <Text style={styles.storageText}>
+                    Image saved for training improvements
+                  </Text>
+                </View>
+              )}
+            </>
+          )}
+        </View>
       </Animated.View>
 
       <View
@@ -1036,17 +1079,17 @@ const Scan = () => {
 
         <TouchableOpacity
           accessibilityRole="button"
-          onPress={toggleOverlays}
+          onPress={toggleReticle}
           style={styles.utilityButton}
         >
           <Ionicons
-            name={showOverlays ? "eye-outline" : "eye-off-outline"}
+            name={showReticle ? "eye-outline" : "eye-off-outline"}
             size={20}
             color={palette.textPrimary}
           />
         </TouchableOpacity>
       </View>
-    </SafeAreaView>
+    </View>
   );
 };
 
