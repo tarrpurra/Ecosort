@@ -25,7 +25,8 @@ const CustomTabBar = () => {
       return cleanedPath === "" || cleanedPath === "/" || cleanedPath === "/(tabs)";
     }
 
-    return cleanedPath === "/" + tabRoute;
+    const expected = "/" + tabRoute;
+    return cleanedPath === expected || cleanedPath.startsWith(expected + "/");
   };
 
   return (
