@@ -108,7 +108,7 @@ export default function TabLayout() {
         <Tabs.Screen name="reward" />
         <Tabs.Screen name="profile" />
       </Tabs>
-      {pathname !== "/scan" && <CustomTabBar />}
+      <CustomTabBar />
     </>
   );
 };

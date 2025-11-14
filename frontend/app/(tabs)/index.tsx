@@ -12,6 +12,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { apiService } from '../../utils/api';
+import { useAuth } from '../../context/auth-context';
+
+interface UserStats {
+  itemsScanned: number;
+  co2Saved: number;
+  ecoPoints: number;
+  streakDays: number;
+}
 
 const { width } = Dimensions.get('window');
 
@@ -31,7 +39,10 @@ const colors = {
 
 const Home = () => {
   const router = useRouter();
+  const { isAuthenticated } = useAuth();
   const [currentTip] = useState(0);
+  const [stats, setStats] = useState<UserStats | null>(null);
+  const [userName, setUserName] = useState('Eco Hero');
 
   const ecoTips = [
     "💡 Rinse containers before recycling to prevent contamination",
@@ -40,11 +51,52 @@ const Home = () => {
     "🌍 You've helped save 2.3kg of plastic this month!"
   ];
 
-  const stats = [
-    { label: "Items Scanned", value: "127", icon: "camera" },
-    { label: "CO₂ Saved", value: "15kg", icon: "leaf" },
-    { label: "Eco Points", value: "2,340", icon: "trophy" },
-    { label: "Streak Days", value: "12", icon: "refresh" }
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const rewardsStats = await apiService.getRewardsStats();
+        const profile = await apiService.getProfile();
+        setStats({
+          itemsScanned: rewardsStats.items_scanned,
+          co2Saved: rewardsStats.co2_saved,
+          ecoPoints: rewardsStats.total_points,
+          streakDays: rewardsStats.streak_days,
+        });
+        setUserName(profile.first_name || profile.name || 'Eco Hero');
+      } catch (error) {
+        console.error('Failed to fetch stats:', error);
+        // Fallback to default values
+        setStats({
+          itemsScanned: 0,
+          co2Saved: 0,
+          ecoPoints: 0,
+          streakDays: 0,
+        });
+      }
+    };
+    if (isAuthenticated) {
+      fetchData();
+    } else {
+      setStats({
+        itemsScanned: 0,
+        co2Saved: 0,
+        ecoPoints: 0,
+        streakDays: 0,
+      });
+      setUserName('Eco Hero');
+    }
+  }, [isAuthenticated]);
+
+  const statsArray = stats ? [
+    { label: "Items Scanned", value: stats.itemsScanned.toString(), icon: "camera" },
+    { label: "CO₂ Saved", value: `${stats.co2Saved}kg`, icon: "leaf" },
+    { label: "Eco Points", value: stats.ecoPoints.toString(), icon: "trophy" },
+    { label: "Streak Days", value: stats.streakDays.toString(), icon: "refresh" }
+  ] : [
+    { label: "Items Scanned", value: "0", icon: "camera" },
+    { label: "CO₂ Saved", value: "0kg", icon: "leaf" },
+    { label: "Eco Points", value: "0", icon: "trophy" },
+    { label: "Streak Days", value: "0", icon: "refresh" }
   ];
 
   return (
@@ -56,7 +108,7 @@ const Home = () => {
         >
           <View style={styles.headerContent}>
             <View style={styles.headerText}>
-              <Text style={styles.headerTitle}>Hello, Eco Hero! 🌿</Text>
+              <Text style={styles.headerTitle}>Hello, {userName}! 🌿</Text>
               <Text style={styles.headerSubtitle}>Ready to make a difference today?</Text>
             </View>
             <View style={styles.headerIcon}>
@@ -94,7 +146,7 @@ const Home = () => {
 
           {/* Stats Grid */}
           <View style={styles.statsGrid}>
-            {stats.map((stat, index) => (
+            {statsArray.map((stat, index) => (
               <View key={index} style={styles.statCard}>
                 <Ionicons name={stat.icon as any} size={24} color={colors.primary} />
                 <Text style={styles.statValue}>{stat.value}</Text>
