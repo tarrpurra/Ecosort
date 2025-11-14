@@ -1,10 +1,10 @@
 // Backend is running on 0.0.0.0:8000, but frontend needs actual reachable address
 import * as SecureStore from 'expo-secure-store';
 
-const API_BASE_URL ='https://4c4f1f41fa46.ngrok-free.APP'; // Production fallback
+const API_BASE_URL = 'https://77ae8b1de411.ngrok-free.app'; // Development
 
 // Alternative configurations:
-// const API_BASE_URL = 'http://localhost:8000'; // iOS Simulator
+// const API_BASE_URL = 'https://f91813e1e894.ngrok-free.app'; // Production fallback
 // const API_BASE_URL = 'http://192.168.1.XXX:8000'; // Your computer's IP for physical device
 
 interface LoginData {
@@ -51,6 +51,37 @@ interface CompleteProfileData {
 interface ProfileStatusResponse {
   profile_complete: boolean;
   missing_fields: string[];
+}
+
+interface RewardsStats {
+  total_points: number;
+  current_level: string;
+  next_level: string | null;
+  points_to_next: number;
+  items_scanned: number;
+  co2_saved: number;
+  streak_days: number;
+}
+
+interface Badge {
+  name: string;
+  earned: boolean;
+  awarded_at?: string;
+  reason?: string;
+}
+
+interface LeaderboardEntry {
+  rank: number;
+  name: string;
+  points: number;
+  avatar: string;
+}
+
+interface Milestone {
+  goal: string;
+  progress: number;
+  total: number;
+  reward: string;
 }
 
 interface ClassificationRequest {
@@ -168,6 +199,22 @@ class ApiService {
 
   async healthCheck(): Promise<{ status: string }> {
     return this.request<{ status: string }>('/health');
+  }
+
+  async getRewardsStats(): Promise<RewardsStats> {
+    return this.request<RewardsStats>('/profile/rewards/stats');
+  }
+
+  async getUserBadges(): Promise<Badge[]> {
+    return this.request<Badge[]>('/profile/rewards/badges');
+  }
+
+  async getLeaderboard(): Promise<LeaderboardEntry[]> {
+    return this.request<LeaderboardEntry[]>('/profile/rewards/leaderboard');
+  }
+
+  async getMilestones(): Promise<Milestone[]> {
+    return this.request<Milestone[]>('/profile/rewards/milestones');
   }
 }
 

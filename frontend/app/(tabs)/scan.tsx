@@ -14,7 +14,6 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { apiService } from "../../utils/api";
-import { styles } from "./scan.styles";
 
 const { width, height } = Dimensions.get("window");
 const RETICLE_SIZE = Math.min(width * 0.88, height * 0.64);
@@ -29,16 +28,16 @@ const palette = {
   backdrop: "#01140b",
   surface: "#042014",
   card: "rgba(4, 32, 20, 0.94)",
-  accent: "#2dd36f",
-  accentSoft: "#3ee48a",
-  accentAlt: "#34d399",
+  accent: "#ffffff",
+  accentSoft: "#cccccc",
+  accentAlt: "#aaaaaa",
   warning: "#f97316",
   danger: "#ef4444",
   textPrimary: "#f8fafc",
   textSecondary: "rgba(226, 232, 240, 0.8)",
   textMuted: "rgba(148, 163, 184, 0.9)",
-  glassBorder: "rgba(46, 204, 113, 0.3)",
-  cameraMask: "rgba(1, 15, 9, 0.5)",
+  glassBorder: "rgba(255, 255, 255, 0.3)",
+  cameraMask: "rgba(0, 0, 0, 0.5)",
 };
 
 const OVERLAY_CARD_WIDTH = Math.min(width * 0.8, 340);
@@ -394,6 +393,7 @@ const Scan = () => {
     setScannedItem(null);
     setIsScanning(false);
     setShowOverlays(true);
+    resultSheetAnim.setValue(0);
   };
 
   const toggleOverlays = () => {
@@ -426,25 +426,6 @@ const Scan = () => {
       : palette.danger
     : palette.accentSoft;
 
-  const overlayPositionStyle = useMemo(() => {
-    if (!scannedItem?.bbox || scannedItem.bbox.length < 4) {
-      return {
-        bottom: "16%",
-        left: "50%",
-        transform: [{ translateX: -OVERLAY_CARD_WIDTH / 2 }],
-      };
-    }
-
-    const [x1, y1, x2] = scannedItem.bbox;
-    const centerXPercent = clamp(((x1 + x2) / 2) * 100, 12, 88);
-    const topPercent = clamp(y1 * 100 - 12, 6, 70);
-
-    return {
-      top: `${topPercent}%`,
-      left: `${centerXPercent}%`,
-      transform: [{ translateX: -OVERLAY_CARD_WIDTH / 2 }],
-    };
-  }, [scannedItem]);
 
   const hasBoundingBox = useMemo(
     () => Boolean(scannedItem?.bbox && scannedItem.bbox.length >= 4),
@@ -552,162 +533,12 @@ const Scan = () => {
                 </View>
               </View>
 
-              {showReticle && (
-                <View style={styles.reticleWrapper}>
-                  <Animated.View
-                    style={[
-                      styles.reticle,
-                      { transform: [{ scale: scanPulseAnim }] },
-                    ]}
-                  >
-                    {RETICLE_CORNERS.map((corner) => (
-                      <View
-                        key={corner}
-                        style={[styles.corner, styles[corner]]}
-                      />
-                    ))}
-                    <View style={styles.gridLineHorizontal} />
-                    <View
-                      style={[
-                        styles.gridLineHorizontal,
-                        styles.gridLineHorizontalSecondary,
-                      ]}
-                    />
-                    <View style={styles.gridLineVertical} />
-                    <View
-                      style={[
-                        styles.gridLineVertical,
-                        styles.gridLineVerticalSecondary,
-                      ]}
-                    />
-                    <Animated.View
-                      style={[
-                        styles.scanLine,
-                        { transform: [{ translateY: scanLineTranslate }] },
-                      ]}
-                    />
-                  </Animated.View>
-                  <View
-                    style={[
-                      styles.callout,
-                      scannedItem &&
-                        (scannedItem.recyclable
-                          ? styles.calloutSuccess
-                          : styles.calloutDanger),
-                    ]}
-                  >
-                    <Ionicons
-                      name={calloutIcon as any}
-                      size={18}
-                      color={calloutIconColor}
-                    />
-                    <Text
-                      style={[
-                        styles.calloutText,
-                        scannedItem && styles.calloutResultText,
-                      ]}
-                    >
-                      {calloutMessage}
-                    </Text>
-                  </View>
-                </View>
-              )}
 
               {showOverlays && scannedItem && (
                 <View style={styles.boundingBoxContainer} pointerEvents="none">
-                  {hasBoundingBox && (
-                    <View
-                      style={[
-                        styles.boundingBox,
-                        {
-                          left: `${scannedItem.bbox![0] * 100}%`,
-                          top: `${scannedItem.bbox![1] * 100}%`,
-                          width: `${
-                            (scannedItem.bbox![2] - scannedItem.bbox![0]) * 100
-                          }%`,
-                          height: `${
-                            (scannedItem.bbox![3] - scannedItem.bbox![1]) * 100
-                          }%`,
-                          borderColor: scannedItem.recyclable
-                            ? palette.accent
-                            : palette.danger,
-                        },
-                      ]}
-                    >
-                      <View
-                        style={[
-                          styles.boundingCornerBase,
-                          styles.boundingCornerTL,
-                        ]}
-                      />
-                      <View
-                        style={[
-                          styles.boundingCornerBase,
-                          styles.boundingCornerTR,
-                        ]}
-                      />
-                      <View
-                        style={[
-                          styles.boundingCornerBase,
-                          styles.boundingCornerBL,
-                        ]}
-                      />
-                      <View
-                        style={[
-                          styles.boundingCornerBase,
-                          styles.boundingCornerBR,
-                        ]}
-                      />
-                      <View style={styles.confidenceBadge}>
-                        <Text style={styles.confidenceBadgeText}>
-                          {scannedItem.confidence}% •{" "}
-                          {scannedItem.recyclable
-                            ? "Recyclable"
-                            : "Not recyclable"}
-                        </Text>
-                      </View>
-                      <View
-                        style={[
-                          styles.recycleFlag,
-                          scannedItem.recyclable
-                            ? styles.recycleFlagPositive
-                            : styles.recycleFlagNegative,
-                        ]}
-                      >
-                        <Ionicons
-                          name={
-                            scannedItem.recyclable
-                              ? "repeat-outline"
-                              : "trash-bin-outline"
-                          }
-                          size={14}
-                          color={palette.textPrimary}
-                        />
-                        <Text style={styles.recycleFlagText}>
-                          {scannedItem.recyclable
-                            ? "Ready to recycle"
-                            : "Dispose safely"}
-                        </Text>
-                      </View>
-                      {scannedItem.fallback_model && (
-                        <View style={styles.modelBadge}>
-                          <Ionicons
-                            name="hardware-chip-outline"
-                            size={12}
-                            color={palette.textPrimary}
-                          />
-                          <Text style={styles.modelBadgeText}>
-                            Fallback model
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                  )}
-
                   <View
                     style={[
                       styles.arInsightPanel,
-                      overlayPositionStyle,
                       scannedItem.recyclable
                         ? styles.arInsightPanelPositive
                         : styles.arInsightPanelNegative,
@@ -804,22 +635,22 @@ const Scan = () => {
                     <TouchableOpacity
                       accessibilityRole="button"
                       style={styles.arInsightAction}
-                      onPress={() => router.push("/(tabs)/guide" as any)}
+                      onPress={handleRescan}
                     >
                       <Ionicons
-                        name="location-outline"
+                        name="scan-outline"
                         size={18}
                         color={palette.textPrimary}
                       />
                       <View style={styles.arInsightActionCopy}>
                         <Text style={styles.arInsightActionTitle}>
-                          Connect to a recycling center
+                          Scan More
                         </Text>
                         <Text
                           style={styles.arInsightActionSubtitle}
                           numberOfLines={2}
                         >
-                          {scannedItem.centerPrompt}
+                          Scan another item for recycling guidance
                         </Text>
                       </View>
                       <Ionicons
@@ -889,100 +720,92 @@ const Scan = () => {
         style={[
           styles.resultSheet,
           {
-            transform: [{ translateY: resultTranslate }],
+            transform: [
+              { translateX: -(width - 32) / 2 },
+              { translateY: Animated.add(-(height - 100) / 2, resultTranslate) },
+            ],
             opacity: resultSheetAnim,
           },
         ]}
       >
-        <View style={styles.resultContent}>
-          <View style={styles.resultHeader}>
-            <View
-              style={[
-                styles.resultPill,
-                {
-                  backgroundColor: scannedItem
-                    ? scannedItem.recyclable
-                      ? "rgba(34, 197, 94, 0.14)"
-                      : "rgba(239, 68, 68, 0.14)"
-                    : "rgba(148, 163, 184, 0.1)",
-                },
-              ]}
-            >
-              <Ionicons
-                name={
-                  scannedItem
-                    ? scannedItem.recyclable
-                      ? "checkmark-circle"
-                      : "close-circle"
-                    : "scan-circle-outline"
-                }
-                size={18}
-                color={
-                  scannedItem
-                    ? scannedItem.recyclable
-                      ? palette.accent
-                      : palette.danger
-                    : palette.textSecondary
-                }
-              />
-              <Text
+        {scannedItem && (
+          <View style={styles.resultContent}>
+            <View style={styles.resultHeader}>
+              <View
                 style={[
-                  styles.resultPillText,
+                  styles.resultPill,
                   {
-                    color: scannedItem
-                      ? scannedItem.recyclable
-                        ? palette.accent
-                        : palette.danger
-                      : palette.textSecondary,
+                    backgroundColor: "rgba(255, 255, 255, 0.14)",
                   },
                 ]}
               >
-                {scannedItem
-                  ? scannedItem.recyclable
-                    ? "Recyclable"
-                    : "Not recyclable"
-                  : "Ready to scan"}
-              </Text>
-            </View>
-            {scannedItem && (
-              <TouchableOpacity
-                onPress={handleRescan}
-                style={styles.secondaryButton}
-              >
                 <Ionicons
-                  name="refresh"
-                  size={16}
-                  color={palette.textSecondary}
+                  name={
+                    scannedItem.recyclable
+                      ? "checkmark-circle"
+                      : "close-circle"
+                  }
+                  size={18}
+                  color={
+                    scannedItem.recyclable
+                      ? palette.accent
+                      : palette.danger
+                  }
                 />
-                <Text style={styles.secondaryButtonText}>Scan again</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+                <Text
+                  style={[
+                    styles.resultPillText,
+                    {
+                      color: scannedItem.recyclable
+                        ? palette.accent
+                        : palette.danger,
+                    },
+                  ]}
+                >
+                  {scannedItem.recyclable
+                    ? "Recyclable"
+                    : "Not recyclable"}
+                </Text>
+              </View>
+              <View>
+                <TouchableOpacity
+                  onPress={handleRescan}
+                  style={styles.secondaryButton}
+                >
+                  <Ionicons
+                    name="refresh"
+                    size={16}
+                    color={palette.textSecondary}
+                  />
+                  <Text style={styles.secondaryButtonText}>Scan again</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
 
-            <Text style={styles.resultTitle}>{scannedItem.item}</Text>
+            <Text style={styles.resultTitle}>{scannedItem?.item || "Item"}</Text>
             <Text style={styles.resultSubtitle}>
-              {scannedItem.materialSummary}
+              {scannedItem?.materialSummary || "Material summary"}
             </Text>
 
             <View style={styles.metricsRow}>
               <View style={styles.metricCard}>
                 <Text style={styles.metricLabel}>Confidence</Text>
                 <Text style={styles.metricValue}>
-                  {scannedItem.confidence}%
+                  {scannedItem?.confidence || 0}%
                 </Text>
               </View>
               <View style={styles.metricCard}>
                 <Text style={styles.metricLabel}>Carbon impact</Text>
                 <Text style={styles.metricValue}>
-                  {scannedItem.carbonFootprint}
+                  {scannedItem?.carbonFootprint || "0kg CO₂"}
                 </Text>
-                <Text style={styles.metricCaption}>{scannedItem.impact}</Text>
+                <Text style={styles.metricCaption}>{scannedItem?.impact || "Impact"}</Text>
               </View>
               <View style={styles.metricCard}>
                 <Text style={styles.metricLabel}>Material</Text>
-                <Text style={styles.metricValue}>{scannedItem.category}</Text>
+                <Text style={styles.metricValue}>{scannedItem?.category || "Material"}</Text>
                 <Text style={styles.metricCaption}>
-                  {scannedItem.fallback_model ? "Fallback model" : "YOLO11 model"}
+                  {scannedItem?.fallback_model ? "Fallback model" : "YOLO11 model"}
                 </Text>
               </View>
 
@@ -1033,23 +856,12 @@ const Scan = () => {
                   Image saved for training improvements
                 </Text>
               </View>
+            )}
+          </View>    
+      </View>
+      )}
+    </Animated.View>
 
-              {scannedItem.image_path && (
-                <View style={styles.storageRow}>
-                  <Ionicons
-                    name="cloud-upload-outline"
-                    size={16}
-                    color={palette.accent}
-                  />
-                  <Text style={styles.storageText}>
-                    Image saved for training improvements
-                  </Text>
-                </View>
-              )}
-            </>
-          )}
-        </View>
-      </Animated.View>
 
       <View
         pointerEvents={scannedItem ? "none" : "auto"}
@@ -1089,6 +901,7 @@ const Scan = () => {
           />
         </TouchableOpacity>
       </View>
+      
     </View>
   );
 };
@@ -1113,7 +926,7 @@ const styles = StyleSheet.create({
   overlayContainer: {
     flex: 1,
     backgroundColor: palette.cameraMask,
-    justifyContent: "space-between",
+    flexDirection: "column",
   },
   topControls: {
     flexDirection: "row",
@@ -1150,6 +963,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: palette.glassBorder,
   },
+  statusContainer: {
+    paddingHorizontal: 18,
+    paddingTop: 12,
+  },
+  statusTextContainer: {
+    display: "flex",
+    justifyContent: "flex-start",
+    position: "relative",
+  },
   reticleWrapper: {
     flex: 1,
     justifyContent: "center",
@@ -1160,7 +982,7 @@ const styles = StyleSheet.create({
     height: RETICLE_SIZE,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: "rgba(45, 211, 111, 0.35)",
+    borderColor: "rgba(255, 255, 255, 0.35)",
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "rgba(4, 32, 20, 0.28)",
@@ -1204,7 +1026,7 @@ const styles = StyleSheet.create({
     left: 24,
     right: 24,
     height: 1,
-    backgroundColor: "rgba(45, 211, 111, 0.2)",
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
     top: RETICLE_SIZE / 3,
   },
   gridLineHorizontalSecondary: {
@@ -1216,7 +1038,7 @@ const styles = StyleSheet.create({
     top: 24,
     bottom: 24,
     width: 1,
-    backgroundColor: "rgba(45, 211, 111, 0.2)",
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
     left: RETICLE_SIZE / 3,
   },
   gridLineVerticalSecondary: {
@@ -1229,7 +1051,7 @@ const styles = StyleSheet.create({
     right: 18,
     height: 3,
     borderRadius: 2,
-    backgroundColor: "rgba(45, 211, 111, 0.85)",
+    backgroundColor: "rgba(255, 255, 255, 0.85)",
   },
   callout: {
     marginTop: 28,
@@ -1244,8 +1066,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   calloutSuccess: {
-    backgroundColor: "rgba(45, 211, 111, 0.24)",
-    borderColor: "rgba(45, 211, 111, 0.38)",
+    backgroundColor: "rgba(255, 255, 255, 0.24)",
+    borderColor: "rgba(255, 255, 255, 0.38)",
   },
   calloutDanger: {
     backgroundColor: "rgba(239, 68, 68, 0.22)",
@@ -1305,7 +1127,10 @@ const styles = StyleSheet.create({
   },
   arInsightPanel: {
     position: "absolute",
+    top: "50%",
+    left: "50%",
     width: OVERLAY_CARD_WIDTH,
+    transform: [{ translateX: -OVERLAY_CARD_WIDTH / 2 }, { translateY: -150 }],
     backgroundColor: "rgba(4, 32, 20, 0.92)",
     borderRadius: 24,
     padding: 18,
@@ -1320,7 +1145,7 @@ const styles = StyleSheet.create({
     zIndex: 5,
   },
   arInsightPanelPositive: {
-    borderColor: "rgba(45, 211, 111, 0.38)",
+    borderColor: "rgba(255, 255, 255, 0.38)",
   },
   arInsightPanelNegative: {
     borderColor: "rgba(239, 68, 68, 0.35)",
@@ -1340,8 +1165,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   arInsightIconPositive: {
-    backgroundColor: "rgba(45, 211, 111, 0.22)",
-    borderColor: "rgba(45, 211, 111, 0.45)",
+    backgroundColor: "rgba(255, 255, 255, 0.22)",
+    borderColor: "rgba(255, 255, 255, 0.45)",
   },
   arInsightIconNegative: {
     backgroundColor: "rgba(239, 68, 68, 0.22)",
@@ -1464,8 +1289,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   recycleFlagPositive: {
-    backgroundColor: "rgba(45, 211, 111, 0.28)",
-    borderColor: "rgba(45, 211, 111, 0.5)",
+    backgroundColor: "rgba(255, 255, 255, 0.28)",
+    borderColor: "rgba(255, 255, 255, 0.5)",
   },
   recycleFlagNegative: {
     backgroundColor: "rgba(239, 68, 68, 0.26)",
@@ -1527,7 +1352,7 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: "rgba(45, 211, 111, 0.22)",
+    backgroundColor: "rgba(255, 255, 255, 0.22)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1550,7 +1375,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 16,
-    backgroundColor: "rgba(45, 211, 111, 0.18)",
+    backgroundColor: "rgba(255, 255, 255, 0.18)",
   },
   impactTagText: {
     color: palette.textPrimary,
@@ -1600,7 +1425,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: "rgba(45, 211, 111, 0.18)",
+    backgroundColor: "rgba(255, 255, 255, 0.18)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1632,9 +1457,10 @@ const styles = StyleSheet.create({
   },
   resultSheet: {
     position: "absolute",
-    left: 16,
-    right: 16,
-    bottom: 28,
+    top: "50%",
+    left: "50%",
+    width: width - 32,
+    maxHeight: height - 100,
     backgroundColor: palette.card,
     borderRadius: 28,
     padding: 24,
@@ -1657,6 +1483,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 18,
+    backgroundColor: "rgba(255, 255, 255, 0.14)",
   },
   resultPillText: {
     fontSize: 13,
@@ -1747,7 +1574,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(45, 211, 111, 0.18)",
+    backgroundColor: "rgba(255, 255, 255, 0.18)",
     borderWidth: 1,
     borderColor: palette.glassBorder,
   },
@@ -1769,7 +1596,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: "rgba(45, 211, 111, 0.18)",
+    backgroundColor: "rgba(255, 255, 255, 0.18)",
     borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -1824,9 +1651,9 @@ const styles = StyleSheet.create({
     borderRadius: 46,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(45, 211, 111, 0.24)",
+    backgroundColor: "rgba(255, 255, 255, 0.24)",
     borderWidth: 2,
-    borderColor: "rgba(45, 211, 111, 0.45)",
+    borderColor: "rgba(255, 255, 255, 0.45)",
   },
   captureButtonDisabled: {
     opacity: 0.6,

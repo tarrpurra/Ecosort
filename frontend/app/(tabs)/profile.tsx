@@ -178,7 +178,10 @@ const Profile = () => {
   // Show profile completion form if profile is incomplete
   if (showCompletionForm && profileStatus) {
     return (
-      <ScrollView style={{ flex: 1, backgroundColor: "#D2EBDA" }}>
+      <ScrollView
+        style={{ flex: 1, backgroundColor: "#D2EBDA" }}
+        contentContainerStyle={{ paddingBottom: 100 }}
+      >
         {/* Header */}
         <View className="bg-green-500 px-6 pt-12 pb-6 rounded-b-3xl">
           <View className="flex-row items-center gap-4 mb-4">
@@ -274,7 +277,10 @@ const Profile = () => {
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: "#D2EBDA" }}>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: "#D2EBDA" }}
+      contentContainerStyle={{ paddingBottom: 100 }}
+    >
       {/* Header */}
       <View className="bg-green-500 px-6 pt-12 pb-6 rounded-b-3xl">
         <View className="flex-row items-center gap-4 mb-4">
@@ -463,30 +469,34 @@ const Profile = () => {
                 onValueChange={setLocationTracking}
               />
             </View>
+            <View className="border-t border-gray-200 pt-4 pb-2">
+              <TouchableOpacity
+                className="flex-row items-center justify-between p-2"
+                onPress={() => {
+                  Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                      text: "Sign Out",
+                      style: "destructive",
+                      onPress: async () => {
+                        await logout();
+                        // Navigation will be handled by AuthGate
+                      },
+                    },
+                  ]);
+                }}
+              >
+                <View className="flex-row items-center">
+                  <Ionicons name="log-out" className="mr-3 h-5 w-5 text-red-500" />
+                  <View>
+                    <Text className="text-red-500 font-medium">Sign Out</Text>
+                    <Text className="text-sm text-gray-500">End your current session</Text>
+                  </View>
+                </View>
+                <Ionicons name="chevron-forward" className="h-5 w-5 text-gray-400" />
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-
-        {/* Logout */}
-        <View className="mb-24 bg-white rounded-xl shadow-lg p-4">
-          <TouchableOpacity
-            className="flex-row items-center p-2"
-            onPress={() => {
-              Alert.alert("Sign Out", "Are you sure you want to sign out?", [
-                { text: "Cancel", style: "cancel" },
-                {
-                  text: "Sign Out",
-                  style: "destructive",
-                  onPress: async () => {
-                    await logout();
-                    // Navigation will be handled by AuthGate
-                  },
-                },
-              ]);
-            }}
-          >
-            <Ionicons name="log-out" className="mr-3 h-5 w-5 text-red-500" />
-            <Text className="text-red-500 font-medium">Sign Out</Text>
-          </TouchableOpacity>
         </View>
       </View>
     </ScrollView>

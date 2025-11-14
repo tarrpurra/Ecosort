@@ -18,7 +18,19 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
     const initialize = async () => {
       try {
         const token = await apiService.initializeToken();
-        setIsAuthenticated(!!token);
+        if (token) {
+          // Validate token by making a test request
+          try {
+            await apiService.healthCheck();
+            setIsAuthenticated(true);
+          } catch (error) {
+            // Token is invalid, clear it
+            await apiService.clearToken();
+            setIsAuthenticated(false);
+          }
+        } else {
+          setIsAuthenticated(false);
+        }
       } finally {
         setLoading(false);
       }
