@@ -49,6 +49,10 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsAuthenticated(false);
   };
 
+  useEffect(() => {
+    apiService.onAuthError = logout;
+  }, []);
+
   const value = useMemo(
     () => ({ isAuthenticated, loading, login, logout }),
     [isAuthenticated, loading]

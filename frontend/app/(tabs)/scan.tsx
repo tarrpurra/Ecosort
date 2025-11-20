@@ -88,7 +88,8 @@ const MATERIAL_PROFILES: MaterialProfile[] = [
       "Remove lids, rinse thoroughly, and sort by color if your center requests it.",
     disposeSteps:
       "Wrap safely and take it to a civic amenity site or follow local disposal rules.",
-    centerPrompt: "Use local bottle banks or glass igloos for quick drop-off points.",
+    centerPrompt:
+      "Use local bottle banks or glass igloos for quick drop-off points.",
   },
   {
     match: /(paper|cardboard|carton|box|newspaper|magazine)/i,
@@ -101,7 +102,8 @@ const MATERIAL_PROFILES: MaterialProfile[] = [
       "Flatten boxes, remove tape, and stack clean paper together before recycling.",
     disposeSteps:
       "Place soiled paper in the trash or compost if accepted locally.",
-    centerPrompt: "Community recycling centers accept bundled cardboard and paper bales.",
+    centerPrompt:
+      "Community recycling centers accept bundled cardboard and paper bales.",
   },
   {
     match: /(metal|aluminum|steel|tin|can)/i,
@@ -114,7 +116,8 @@ const MATERIAL_PROFILES: MaterialProfile[] = [
       "Rinse cans, remove labels if possible, and crush lightly to save space.",
     disposeSteps:
       "Wrap sharp edges and take to scrap metal or household waste facilities.",
-    centerPrompt: "Drop cans at curbside bins or local scrap yards for redemption.",
+    centerPrompt:
+      "Drop cans at curbside bins or local scrap yards for redemption.",
   },
   {
     match: /(battery|phone|laptop|electronic|cable|charger)/i,
@@ -127,7 +130,8 @@ const MATERIAL_PROFILES: MaterialProfile[] = [
       "Store data securely, remove batteries, and take it to a certified e-waste center.",
     disposeSteps:
       "Bring it to municipal e-waste days or retailer take-back programs.",
-    centerPrompt: "Use EcoSort's finder to locate certified e-waste recycling partners.",
+    centerPrompt:
+      "Use EcoSort's finder to locate certified e-waste recycling partners.",
   },
   {
     match: /(organic|food|compost|banana|apple|yard|garden|coffee|tea)/i,
@@ -140,7 +144,8 @@ const MATERIAL_PROFILES: MaterialProfile[] = [
       "Collect with other food scraps and place in a green/compost bin or backyard composter.",
     disposeSteps:
       "Seal and send with municipal organics or general waste if composting isn't available.",
-    centerPrompt: "Check community gardens or municipal composting programs nearby.",
+    centerPrompt:
+      "Check community gardens or municipal composting programs nearby.",
   },
   {
     match: /(textile|fabric|clothing|cloth|garment)/i,
@@ -153,7 +158,8 @@ const MATERIAL_PROFILES: MaterialProfile[] = [
       "Wash, bag, and deliver to textile donation or recycling drop-offs.",
     disposeSteps:
       "Repurpose as cleaning rags or bring to textile-specific collection bins.",
-    centerPrompt: "Search for clothing donation bins or textile recovery hubs in your area.",
+    centerPrompt:
+      "Search for clothing donation bins or textile recovery hubs in your area.",
   },
 ];
 
@@ -180,28 +186,34 @@ const getMaterialInsights = (
     : 0;
 
   const summary = recyclable
-    ? profile?.recyclableSummary ?? `${label} can be recycled after a quick clean.`
-    : profile?.nonRecyclableSummary ?? `${label} needs special handling to stay out of recycling bins.`;
+    ? profile?.recyclableSummary ??
+      `${label} can be recycled after a quick clean.`
+    : profile?.nonRecyclableSummary ??
+      `${label} needs special handling to stay out of recycling bins.`;
 
   const steps = recyclable
-    ? profile?.recycleSteps ?? `Clean the ${fallbackLabel.toLowerCase()} and place it with your recyclables.`
-    : profile?.disposeSteps ?? `Dispose of the ${fallbackLabel.toLowerCase()} according to local guidance.`;
+    ? profile?.recycleSteps ??
+      `Clean the ${fallbackLabel.toLowerCase()} and place it with your recyclables.`
+    : profile?.disposeSteps ??
+      `Dispose of the ${fallbackLabel.toLowerCase()} according to local guidance.`;
 
   const centerPrompt =
-    profile?.centerPrompt ?? "Open the EcoSort guide to see nearby recycling and drop-off locations.";
+    profile?.centerPrompt ??
+    "Open the EcoSort guide to see nearby recycling and drop-off locations.";
 
   const carbonFootprint =
     normalizedImpact > 0
       ? `${normalizedImpact.toFixed(2)}kg CO₂ impact`
       : "Trace CO₂ impact";
 
-  const impact = normalizedImpact > 0
-    ? recyclable
-      ? `Diverts ~${normalizedImpact.toFixed(2)}kg CO₂`
-      : `Avoids ${normalizedImpact.toFixed(2)}kg CO₂ when disposed correctly`
-    : recyclable
-    ? "Positive recycling impact"
-    : "Dispose responsibly";
+  const impact =
+    normalizedImpact > 0
+      ? recyclable
+        ? `Diverts ~${normalizedImpact.toFixed(2)}kg CO₂`
+        : `Avoids ${normalizedImpact.toFixed(2)}kg CO₂ when disposed correctly`
+      : recyclable
+      ? "Positive recycling impact"
+      : "Dispose responsibly";
 
   const callout = recyclable
     ? `${label} ready to recycle`
@@ -426,7 +438,6 @@ const Scan = () => {
       : palette.danger
     : palette.accentSoft;
 
-
   const hasBoundingBox = useMemo(
     () => Boolean(scannedItem?.bbox && scannedItem.bbox.length >= 4),
     [scannedItem]
@@ -446,70 +457,73 @@ const Scan = () => {
     <View style={styles.safeArea}>
       <View style={styles.cameraShell}>
         {permission?.granted ? (
-          <CameraView
-            ref={cameraRef}
-            style={StyleSheet.absoluteFillObject}
-            facing={facing}
-            enableTorch={torchEnabled}
-            onCameraReady={() => setCameraReady(true)}
-          >
+          <>
+            <CameraView
+              ref={cameraRef}
+              style={StyleSheet.absoluteFillObject}
+              facing={facing}
+              enableTorch={torchEnabled}
+              onCameraReady={() => setCameraReady(true)}
+            />
             <View style={styles.overlayContainer}>
-              <View style={styles.topControls}>
-                <TouchableOpacity
-                  accessibilityRole="button"
-                  onPress={() => router.back()}
-                  style={styles.roundButton}
-                >
-                  <Ionicons
-                    name="chevron-back"
-                    size={20}
-                    color={palette.textPrimary}
-                  />
-                </TouchableOpacity>
-
-                <View style={styles.headerMeta}>
-                  <Text style={styles.headerTitle}>AI Scanner</Text>
-                  <Text style={styles.headerSubtitle}>
-                    YOLO11 real-time detection
-                  </Text>
-                </View>
-
-                <View style={styles.topActions}>
+              {!scannedItem && (
+                <View style={styles.topControls}>
                   <TouchableOpacity
                     accessibilityRole="button"
-                    onPress={toggleTorch}
+                    onPress={() => router.back()}
                     style={styles.roundButton}
                   >
                     <Ionicons
-                      name={torchEnabled ? "flash" : "flash-outline"}
-                      size={18}
-                      color={palette.textPrimary}
-                    />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    accessibilityRole="button"
-                    onPress={toggleFacing}
-                    style={styles.roundButton}
-                  >
-                    <Ionicons
-                      name="camera-reverse-outline"
+                      name="chevron-back"
                       size={20}
                       color={palette.textPrimary}
                     />
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    accessibilityRole="button"
-                    onPress={toggleOverlays}
-                    style={styles.roundButton}
-                  >
-                    <Ionicons
-                      name={showOverlays ? "layers" : "layers-outline"}
-                      size={20}
-                      color={palette.textPrimary}
-                    />
-                  </TouchableOpacity>
+
+                  <View style={styles.headerMeta}>
+                    <Text style={styles.headerTitle}>AI Scanner</Text>
+                    <Text style={styles.headerSubtitle}>
+                      YOLO11 real-time detection
+                    </Text>
+                  </View>
+
+                  <View style={styles.topActions}>
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      onPress={toggleTorch}
+                      style={styles.roundButton}
+                    >
+                      <Ionicons
+                        name={torchEnabled ? "flash" : "flash-outline"}
+                        size={18}
+                        color={palette.textPrimary}
+                      />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      onPress={toggleFacing}
+                      style={styles.roundButton}
+                    >
+                      <Ionicons
+                        name="camera-reverse-outline"
+                        size={20}
+                        color={palette.textPrimary}
+                      />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      onPress={toggleOverlays}
+                      style={styles.roundButton}
+                    >
+                      <Ionicons
+                        name={showOverlays ? "layers" : "layers-outline"}
+                        size={20}
+                        color={palette.textPrimary}
+                      />
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
+              )}
 
               <View style={styles.statusContainer}>
                 <View style={styles.modelStatus}>
@@ -532,7 +546,6 @@ const Scan = () => {
                   </View>
                 </View>
               </View>
-
 
               {showOverlays && scannedItem && (
                 <View style={styles.boundingBoxContainer} pointerEvents="none">
@@ -567,7 +580,10 @@ const Scan = () => {
                         <Text style={styles.arInsightTitle} numberOfLines={1}>
                           {scannedItem.item}
                         </Text>
-                        <Text style={styles.arInsightSubtitle} numberOfLines={2}>
+                        <Text
+                          style={styles.arInsightSubtitle}
+                          numberOfLines={2}
+                        >
                           {scannedItem.materialSummary}
                         </Text>
                       </View>
@@ -594,7 +610,9 @@ const Scan = () => {
                           size={12}
                           color={palette.textPrimary}
                         />
-                        <Text style={styles.modelBadgeText}>Fallback model</Text>
+                        <Text style={styles.modelBadgeText}>
+                          Fallback model
+                        </Text>
                       </View>
                     )}
 
@@ -627,7 +645,10 @@ const Scan = () => {
                           ? "How to recycle"
                           : "Safe disposal"}
                       </Text>
-                      <Text style={styles.arInsightSectionText} numberOfLines={3}>
+                      <Text
+                        style={styles.arInsightSectionText}
+                        numberOfLines={3}
+                      >
                         {scannedItem.recyclingSteps}
                       </Text>
                     </View>
@@ -690,7 +711,7 @@ const Scan = () => {
                 </View>
               )}
             </View>
-          </CameraView>
+          </>
         ) : (
           <View style={styles.permissionCard}>
             <View style={styles.permissionIconWrapper}>
@@ -721,8 +742,10 @@ const Scan = () => {
           styles.resultSheet,
           {
             transform: [
-              { translateX: -(width - 32) / 2 },
-              { translateY: Animated.add(-(height - 100) / 2, resultTranslate) },
+              { translateX: -Math.min(width - 32, 400) / 2 },
+              {
+                translateY: Animated.add(-(height - 100) / 2, resultTranslate),
+              },
             ],
             opacity: resultSheetAnim,
           },
@@ -741,15 +764,11 @@ const Scan = () => {
               >
                 <Ionicons
                   name={
-                    scannedItem.recyclable
-                      ? "checkmark-circle"
-                      : "close-circle"
+                    scannedItem.recyclable ? "checkmark-circle" : "close-circle"
                   }
                   size={18}
                   color={
-                    scannedItem.recyclable
-                      ? palette.accent
-                      : palette.danger
+                    scannedItem.recyclable ? palette.accent : palette.danger
                   }
                 />
                 <Text
@@ -762,9 +781,7 @@ const Scan = () => {
                     },
                   ]}
                 >
-                  {scannedItem.recyclable
-                    ? "Recyclable"
-                    : "Not recyclable"}
+                  {scannedItem.recyclable ? "Recyclable" : "Not recyclable"}
                 </Text>
               </View>
               <View>
@@ -782,7 +799,9 @@ const Scan = () => {
               </View>
             </View>
 
-            <Text style={styles.resultTitle}>{scannedItem?.item || "Item"}</Text>
+            <Text style={styles.resultTitle}>
+              {scannedItem?.item || "Item"}
+            </Text>
             <Text style={styles.resultSubtitle}>
               {scannedItem?.materialSummary || "Material summary"}
             </Text>
@@ -799,69 +818,74 @@ const Scan = () => {
                 <Text style={styles.metricValue}>
                   {scannedItem?.carbonFootprint || "0kg CO₂"}
                 </Text>
-                <Text style={styles.metricCaption}>{scannedItem?.impact || "Impact"}</Text>
+                <Text style={styles.metricCaption}>
+                  {scannedItem?.impact || "Impact"}
+                </Text>
               </View>
               <View style={styles.metricCard}>
                 <Text style={styles.metricLabel}>Material</Text>
-                <Text style={styles.metricValue}>{scannedItem?.category || "Material"}</Text>
+                <Text style={styles.metricValue}>
+                  {scannedItem?.category || "Material"}
+                </Text>
                 <Text style={styles.metricCaption}>
-                  {scannedItem?.fallback_model ? "Fallback model" : "YOLO11 model"}
+                  {scannedItem?.fallback_model
+                    ? "Fallback model"
+                    : "YOLO11 model"}
                 </Text>
               </View>
 
-            <View style={styles.instructionsCard}>
-              <Text style={styles.instructionsTitle}>
-                {scannedItem.recyclable ? "How to recycle" : "Safe disposal"}
-              </Text>
-              <Text style={styles.instructionsText}>
-                {scannedItem.recyclingSteps}
-              </Text>
+              <View style={styles.instructionsCard}>
+                <Text style={styles.instructionsTitle}>
+                  {scannedItem.recyclable ? "How to recycle" : "Safe disposal"}
+                </Text>
+                <Text style={styles.instructionsText}>
+                  {scannedItem.recyclingSteps}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                accessibilityRole="button"
+                style={styles.centerCard}
+                onPress={() => router.push("/(tabs)/guide" as any)}
+              >
+                <View style={styles.centerIconWrapper}>
+                  <Ionicons
+                    name="navigate-circle-outline"
+                    size={20}
+                    color={palette.textPrimary}
+                  />
+                </View>
+                <View style={styles.centerCopy}>
+                  <Text style={styles.centerTitle}>
+                    Connect to recycling centers
+                  </Text>
+                  <Text style={styles.centerSubtitle} numberOfLines={2}>
+                    {scannedItem.centerPrompt}
+                  </Text>
+                </View>
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={palette.textSecondary}
+                />
+              </TouchableOpacity>
+
+              {scannedItem.image_path && (
+                <View style={styles.storageRow}>
+                  <Ionicons
+                    name="cloud-upload-outline"
+                    size={16}
+                    color={palette.accent}
+                  />
+                  <Text style={styles.storageText}>
+                    Image saved for training improvements
+                  </Text>
+                </View>
+              )}
             </View>
-
-            <TouchableOpacity
-              accessibilityRole="button"
-              style={styles.centerCard}
-              onPress={() => router.push("/(tabs)/guide" as any)}
-            >
-              <View style={styles.centerIconWrapper}>
-                <Ionicons
-                  name="navigate-circle-outline"
-                  size={20}
-                  color={palette.textPrimary}
-                />
-              </View>
-              <View style={styles.centerCopy}>
-                <Text style={styles.centerTitle}>
-                  Connect to recycling centers
-                </Text>
-                <Text style={styles.centerSubtitle} numberOfLines={2}>
-                  {scannedItem.centerPrompt}
-                </Text>
-              </View>
-              <Ionicons
-                name="chevron-forward"
-                size={18}
-                color={palette.textSecondary}
-              />
-            </TouchableOpacity>
-
-            {scannedItem.image_path && (
-              <View style={styles.storageRow}>
-                <Ionicons
-                  name="cloud-upload-outline"
-                  size={16}
-                  color={palette.accent}
-                />
-                <Text style={styles.storageText}>
-                  Image saved for training improvements
-                </Text>
-              </View>
-            )}
-          </View>    
-      </View>
-      )}
-    </Animated.View>
-
+          </View>
+        )}
+      </Animated.View>
 
       <View
         pointerEvents={scannedItem ? "none" : "auto"}
@@ -901,7 +925,6 @@ const Scan = () => {
           />
         </TouchableOpacity>
       </View>
-      
     </View>
   );
 };
@@ -1130,6 +1153,7 @@ const styles = StyleSheet.create({
     top: "50%",
     left: "50%",
     width: OVERLAY_CARD_WIDTH,
+    maxHeight: height * 0.5,
     transform: [{ translateX: -OVERLAY_CARD_WIDTH / 2 }, { translateY: -150 }],
     backgroundColor: "rgba(4, 32, 20, 0.92)",
     borderRadius: 24,
@@ -1459,7 +1483,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: "50%",
     left: "50%",
-    width: width - 32,
+    width: Math.min(width - 32, 400),
     maxHeight: height - 100,
     backgroundColor: palette.card,
     borderRadius: 28,

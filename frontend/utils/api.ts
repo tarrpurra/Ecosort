@@ -1,7 +1,7 @@
 // Backend is running on 0.0.0.0:8000, but frontend needs actual reachable address
 import * as SecureStore from 'expo-secure-store';
 
-const API_BASE_URL = 'https://77ae8b1de411.ngrok-free.app'; // Development
+const API_BASE_URL = 'https://f2fbdd8fcd5b.ngrok-free.app'; // Development
 
 // Alternative configurations:
 // const API_BASE_URL = 'https://f91813e1e894.ngrok-free.app'; // Production fallback
@@ -100,6 +100,7 @@ interface ClassificationResponse {
 
 class ApiService {
   private token: string | null = null;
+  onAuthError: (() => void) | null = null;
 
   async initializeToken(): Promise<string | null> {
     const storedToken = await SecureStore.getItemAsync('authToken');
@@ -140,6 +141,10 @@ class ApiService {
     });
 
     if (!response.ok) {
+      if (response.status === 401) {
+        if (this.onAuthError) this.onAuthError();
+        await this.clearToken();
+      }
       const error = await response.text();
       throw new Error(error || `HTTP ${response.status}`);
     }
