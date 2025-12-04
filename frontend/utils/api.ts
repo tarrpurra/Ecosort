@@ -1,7 +1,7 @@
 // Backend is running on 0.0.0.0:8000, but frontend needs actual reachable address
 import * as SecureStore from 'expo-secure-store';
 
-const API_BASE_URL = 'https://f2fbdd8fcd5b.ngrok-free.app'; // Development
+const API_BASE_URL = 'https://333c83a1b1f4.ngrok-free.app'; // Development
 
 // Alternative configurations:
 // const API_BASE_URL = 'https://f91813e1e894.ngrok-free.app'; // Production fallback

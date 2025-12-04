@@ -246,6 +246,15 @@ type ScanResult = {
   image_path?: string;
 };
 
+type ARBoundingBox = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  confidence: number;
+  className: string;
+};
+
 const Scan = () => {
   const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
@@ -257,10 +266,15 @@ const Scan = () => {
   const [torchEnabled, setTorchEnabled] = useState(false);
   const [facing, setFacing] = useState<"back" | "front">("back");
   const [cameraReady, setCameraReady] = useState(false);
+  const [arOverlays, setArOverlays] = useState<ARBoundingBox[]>([]);
+  const [arAnimations, setArAnimations] = useState<{
+    [key: string]: Animated.Value;
+  }>({});
 
   const scanPulseAnim = useRef(new Animated.Value(1)).current;
   const scanLineAnim = useRef(new Animated.Value(0)).current;
   const resultSheetAnim = useRef(new Animated.Value(0)).current;
+  const arGlowAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (permission && !permission.granted) {
@@ -333,6 +347,31 @@ const Scan = () => {
     };
   }, [scannedItem, resultSheetAnim]);
 
+  useEffect(() => {
+    const glowAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(arGlowAnim, {
+          toValue: 1,
+          duration: 2000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(arGlowAnim, {
+          toValue: 0,
+          duration: 2000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    glowAnimation.start();
+    return () => {
+      glowAnimation.stop();
+      arGlowAnim.setValue(0);
+    };
+  }, [arGlowAnim]);
+
   const handleScan = async () => {
     if (!permission?.granted) {
       Alert.alert(
@@ -386,6 +425,20 @@ const Scan = () => {
         image_path: response.image_path || "",
       };
 
+      // Create AR overlays from bounding boxes
+      if (response.bbox && response.bbox.length >= 4) {
+        const [x1, y1, x2, y2] = response.bbox;
+        const arOverlay: ARBoundingBox = {
+          x: x1 * width,
+          y: y1 * height,
+          width: (x2 - x1) * width,
+          height: (y2 - y1) * height,
+          confidence: Math.round(response.confidence * 100),
+          className: result.item,
+        };
+        setArOverlays([arOverlay]);
+      }
+
       setScannedItem(result);
       setShowOverlays(true);
     } catch (error) {
@@ -405,6 +458,7 @@ const Scan = () => {
     setScannedItem(null);
     setIsScanning(false);
     setShowOverlays(true);
+    setArOverlays([]);
     resultSheetAnim.setValue(0);
   };
 
@@ -548,7 +602,10 @@ const Scan = () => {
               </View>
 
               {showOverlays && scannedItem && (
-                <View style={styles.boundingBoxContainer} pointerEvents="none">
+                <View
+                  style={styles.boundingBoxContainer}
+                  pointerEvents="box-none"
+                >
                   <View
                     style={[
                       styles.arInsightPanel,
@@ -556,6 +613,7 @@ const Scan = () => {
                         ? styles.arInsightPanelPositive
                         : styles.arInsightPanelNegative,
                     ]}
+                    pointerEvents="auto"
                   >
                     <View style={styles.arInsightHeader}>
                       <View
@@ -577,7 +635,7 @@ const Scan = () => {
                         />
                       </View>
                       <View style={styles.arInsightHeaderCopy}>
-                        <Text style={styles.arInsightTitle} numberOfLines={1}>
+                        <Text style={styles.arInsightTitle} numberOfLines={2}>
                           {scannedItem.item}
                         </Text>
                         <Text
@@ -595,7 +653,10 @@ const Scan = () => {
                             : styles.arInsightStatusNegative,
                         ]}
                       >
-                        <Text style={styles.arInsightStatusText}>
+                        <Text
+                          style={styles.arInsightStatusText}
+                          numberOfLines={2}
+                        >
                           {scannedItem.recyclable
                             ? "Recyclable"
                             : "Special disposal"}
@@ -645,10 +706,7 @@ const Scan = () => {
                           ? "How to recycle"
                           : "Safe disposal"}
                       </Text>
-                      <Text
-                        style={styles.arInsightSectionText}
-                        numberOfLines={3}
-                      >
+                      <Text style={styles.arInsightSectionText}>
                         {scannedItem.recyclingSteps}
                       </Text>
                     </View>
@@ -683,6 +741,295 @@ const Scan = () => {
                   </View>
                 </View>
               )}
+
+              {/* AR Bounding Box Visualization */}
+              {showOverlays &&
+                arOverlays.map((overlay, index) => (
+                  <View
+                    key={index}
+                    style={styles.arBoundingBoxContainer}
+                    pointerEvents="none"
+                  >
+                    <Animated.View
+                      style={[
+                        styles.arBoundingBox,
+                        {
+                          left: overlay.x,
+                          top: overlay.y,
+                          width: overlay.width,
+                          height: overlay.height,
+                          borderColor: scannedItem?.recyclable
+                            ? "rgba(45, 211, 111, 0.8)"
+                            : "rgba(239, 68, 68, 0.8)",
+                          opacity: arGlowAnim,
+                        },
+                      ]}
+                    />
+
+                    {/* AR Corner Markers */}
+                    <View
+                      style={[
+                        styles.arCornerMarker,
+                        styles.arCornerTL,
+                        { left: overlay.x - 6, top: overlay.y - 6 },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.arCornerLine,
+                          styles.arCornerHorizontal,
+                          {
+                            borderColor: scannedItem?.recyclable
+                              ? "#2dd47b"
+                              : "#ef4444",
+                          },
+                        ]}
+                      />
+                      <View
+                        style={[
+                          styles.arCornerLine,
+                          styles.arCornerVertical,
+                          {
+                            borderColor: scannedItem?.recyclable
+                              ? "#2dd47b"
+                              : "#ef4444",
+                          },
+                        ]}
+                      />
+                    </View>
+
+                    <View
+                      style={[
+                        styles.arCornerMarker,
+                        styles.arCornerTR,
+                        {
+                          right: width - overlay.x - overlay.width - 6,
+                          top: overlay.y - 6,
+                        },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.arCornerLine,
+                          styles.arCornerHorizontal,
+                          {
+                            borderColor: scannedItem?.recyclable
+                              ? "#2dd47b"
+                              : "#ef4444",
+                          },
+                        ]}
+                      />
+                      <View
+                        style={[
+                          styles.arCornerLine,
+                          styles.arCornerVertical,
+                          {
+                            borderColor: scannedItem?.recyclable
+                              ? "#2dd47b"
+                              : "#ef4444",
+                          },
+                        ]}
+                      />
+                    </View>
+
+                    <View
+                      style={[
+                        styles.arCornerMarker,
+                        styles.arCornerBL,
+                        {
+                          left: overlay.x - 6,
+                          bottom: height - overlay.y - overlay.height - 6,
+                        },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.arCornerLine,
+                          styles.arCornerHorizontal,
+                          {
+                            borderColor: scannedItem?.recyclable
+                              ? "#2dd47b"
+                              : "#ef4444",
+                          },
+                        ]}
+                      />
+                      <View
+                        style={[
+                          styles.arCornerLine,
+                          styles.arCornerVertical,
+                          {
+                            borderColor: scannedItem?.recyclable
+                              ? "#2dd47b"
+                              : "#ef4444",
+                          },
+                        ]}
+                      />
+                    </View>
+
+                    <View
+                      style={[
+                        styles.arCornerMarker,
+                        styles.arCornerBR,
+                        {
+                          right: width - overlay.x - overlay.width - 6,
+                          bottom: height - overlay.y - overlay.height - 6,
+                        },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.arCornerLine,
+                          styles.arCornerHorizontal,
+                          {
+                            borderColor: scannedItem?.recyclable
+                              ? "#2dd47b"
+                              : "#ef4444",
+                          },
+                        ]}
+                      />
+                      <View
+                        style={[
+                          styles.arCornerLine,
+                          styles.arCornerVertical,
+                          {
+                            borderColor: scannedItem?.recyclable
+                              ? "#2dd47b"
+                              : "#ef4444",
+                          },
+                        ]}
+                      />
+                    </View>
+
+                    {/* AR Floating Label */}
+                    <View
+                      style={[
+                        styles.arFloatingLabel,
+                        {
+                          left: overlay.x + overlay.width / 2 - 60,
+                          top: overlay.y - 40,
+                        },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.arLabelBubble,
+                          {
+                            backgroundColor: scannedItem?.recyclable
+                              ? "rgba(45, 211, 111, 0.95)"
+                              : "rgba(239, 68, 68, 0.95)",
+                          },
+                        ]}
+                      >
+                        <Text style={styles.arLabelText}>
+                          {overlay.confidence}%
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.arLabelArrow,
+                          {
+                            borderTopColor: scannedItem?.recyclable
+                              ? "rgba(45, 211, 111, 0.95)"
+                              : "rgba(239, 68, 68, 0.95)",
+                          },
+                        ]}
+                      />
+                    </View>
+
+                    {/* AR Success/Error Indicators */}
+                    <View
+                      style={[
+                        styles.arStatusIndicator,
+                        {
+                          left: overlay.x + overlay.width + 12,
+                          top: overlay.y + overlay.height / 2 - 12,
+                        },
+                      ]}
+                    >
+                      <Animated.View
+                        style={[
+                          styles.arStatusIcon,
+                          scannedItem?.recyclable
+                            ? styles.arStatusSuccess
+                            : styles.arStatusError,
+                          { opacity: arGlowAnim },
+                        ]}
+                      >
+                        <Ionicons
+                          name={scannedItem?.recyclable ? "checkmark" : "close"}
+                          size={16}
+                          color="white"
+                        />
+                      </Animated.View>
+                    </View>
+
+                    {/* AR Guidance Arrow for Recyclable Items */}
+                    {scannedItem?.recyclable && (
+                      <View
+                        style={[
+                          styles.arGuidanceArrow,
+                          {
+                            left: overlay.x + overlay.width / 2,
+                            top: overlay.y - 60,
+                          },
+                        ]}
+                      >
+                        <Animated.View
+                          style={[
+                            styles.arArrowBubble,
+                            { opacity: arGlowAnim },
+                          ]}
+                        >
+                          <Ionicons
+                            name="chevron-down"
+                            size={18}
+                            color={palette.accent}
+                          />
+                        </Animated.View>
+                        <View style={styles.arArrowText}>
+                          <Text style={styles.arArrowLabel}>Recyclable</Text>
+                          <Text style={styles.arArrowHint}>
+                            Ready for green bin
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+
+                    {/* AR Guidance for Non-Recyclable Items */}
+                    {!scannedItem?.recyclable && (
+                      <View
+                        style={[
+                          styles.arGuidanceArrow,
+                          {
+                            left: overlay.x + overlay.width / 2,
+                            top: overlay.y - 80,
+                          },
+                        ]}
+                      >
+                        <Animated.View
+                          style={[
+                            styles.arArrowBubble,
+                            { opacity: arGlowAnim },
+                          ]}
+                        >
+                          <Ionicons
+                            name="alert-circle"
+                            size={18}
+                            color={palette.danger}
+                          />
+                        </Animated.View>
+                        <View style={styles.arArrowText}>
+                          <Text style={styles.arArrowLabel}>
+                            Special Handling
+                          </Text>
+                          <Text style={styles.arArrowHint}>
+                            Follow disposal guide
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                ))}
 
               <View style={styles.bottomOverlay}>
                 {scannedItem?.impact && (
@@ -784,104 +1131,6 @@ const Scan = () => {
                   {scannedItem.recyclable ? "Recyclable" : "Not recyclable"}
                 </Text>
               </View>
-              <View>
-                <TouchableOpacity
-                  onPress={handleRescan}
-                  style={styles.secondaryButton}
-                >
-                  <Ionicons
-                    name="refresh"
-                    size={16}
-                    color={palette.textSecondary}
-                  />
-                  <Text style={styles.secondaryButtonText}>Scan again</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <Text style={styles.resultTitle}>
-              {scannedItem?.item || "Item"}
-            </Text>
-            <Text style={styles.resultSubtitle}>
-              {scannedItem?.materialSummary || "Material summary"}
-            </Text>
-
-            <View style={styles.metricsRow}>
-              <View style={styles.metricCard}>
-                <Text style={styles.metricLabel}>Confidence</Text>
-                <Text style={styles.metricValue}>
-                  {scannedItem?.confidence || 0}%
-                </Text>
-              </View>
-              <View style={styles.metricCard}>
-                <Text style={styles.metricLabel}>Carbon impact</Text>
-                <Text style={styles.metricValue}>
-                  {scannedItem?.carbonFootprint || "0kg CO₂"}
-                </Text>
-                <Text style={styles.metricCaption}>
-                  {scannedItem?.impact || "Impact"}
-                </Text>
-              </View>
-              <View style={styles.metricCard}>
-                <Text style={styles.metricLabel}>Material</Text>
-                <Text style={styles.metricValue}>
-                  {scannedItem?.category || "Material"}
-                </Text>
-                <Text style={styles.metricCaption}>
-                  {scannedItem?.fallback_model
-                    ? "Fallback model"
-                    : "YOLO11 model"}
-                </Text>
-              </View>
-
-              <View style={styles.instructionsCard}>
-                <Text style={styles.instructionsTitle}>
-                  {scannedItem.recyclable ? "How to recycle" : "Safe disposal"}
-                </Text>
-                <Text style={styles.instructionsText}>
-                  {scannedItem.recyclingSteps}
-                </Text>
-              </View>
-
-              <TouchableOpacity
-                accessibilityRole="button"
-                style={styles.centerCard}
-                onPress={() => router.push("/(tabs)/guide" as any)}
-              >
-                <View style={styles.centerIconWrapper}>
-                  <Ionicons
-                    name="navigate-circle-outline"
-                    size={20}
-                    color={palette.textPrimary}
-                  />
-                </View>
-                <View style={styles.centerCopy}>
-                  <Text style={styles.centerTitle}>
-                    Connect to recycling centers
-                  </Text>
-                  <Text style={styles.centerSubtitle} numberOfLines={2}>
-                    {scannedItem.centerPrompt}
-                  </Text>
-                </View>
-                <Ionicons
-                  name="chevron-forward"
-                  size={18}
-                  color={palette.textSecondary}
-                />
-              </TouchableOpacity>
-
-              {scannedItem.image_path && (
-                <View style={styles.storageRow}>
-                  <Ionicons
-                    name="cloud-upload-outline"
-                    size={16}
-                    color={palette.accent}
-                  />
-                  <Text style={styles.storageText}>
-                    Image saved for training improvements
-                  </Text>
-                </View>
-              )}
             </View>
           </View>
         )}
@@ -948,7 +1197,7 @@ const styles = StyleSheet.create({
   },
   overlayContainer: {
     flex: 1,
-    backgroundColor: palette.cameraMask,
+    backgroundColor: "transparent", // Changed from palette.cameraMask
     flexDirection: "column",
   },
   topControls: {
@@ -957,6 +1206,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingTop: 18,
+    zIndex: 10,
   },
   headerMeta: {
     alignItems: "center",
@@ -980,7 +1230,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "rgba(15, 23, 42, 0.7)",
+    backgroundColor: "rgba(15, 23, 42, 0.85)",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -989,6 +1239,7 @@ const styles = StyleSheet.create({
   statusContainer: {
     paddingHorizontal: 18,
     paddingTop: 12,
+    zIndex: 5,
   },
   statusTextContainer: {
     display: "flex",
@@ -1106,6 +1357,8 @@ const styles = StyleSheet.create({
   },
   boundingBoxContainer: {
     ...StyleSheet.absoluteFillObject,
+    zIndex: 8,
+    pointerEvents: "none",
   },
   boundingBox: {
     position: "absolute",
@@ -1150,86 +1403,98 @@ const styles = StyleSheet.create({
   },
   arInsightPanel: {
     position: "absolute",
-    top: "50%",
-    left: "50%",
-    width: OVERLAY_CARD_WIDTH,
-    maxHeight: height * 0.5,
-    transform: [{ translateX: -OVERLAY_CARD_WIDTH / 2 }, { translateY: -150 }],
-    backgroundColor: "rgba(12, 18, 32, 0.94)",
+    top: 120, // Changed from percentage positioning
+    left: 16,
+    right: 16,
+    maxHeight: height * 0.7, // Increased from 0.5
+    backgroundColor: "rgba(12, 18, 32, 0.96)", // Increased opacity
     borderRadius: 24,
-    padding: 18,
-    borderWidth: 1,
+    padding: 20,
+    borderWidth: 1.5,
     borderColor: palette.glassBorder,
     gap: 14,
-    shadowColor: palette.accent,
-    shadowOpacity: 0.32,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 18,
-    zIndex: 5,
+    shadowColor: "#000",
+    shadowOpacity: 0.5,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 20,
+    zIndex: -1, // Increased z-index significantly
+    pointerEvents: "auto", // Ensure interaction is enabled
   },
   arInsightPanelPositive: {
-    borderColor: "rgba(255, 255, 255, 0.38)",
+    borderColor: "rgba(45, 211, 111, 0.5)",
+    shadowColor: "rgba(45, 211, 111, 0.3)",
   },
   arInsightPanelNegative: {
-    borderColor: "rgba(239, 68, 68, 0.35)",
-    shadowColor: palette.danger,
+    borderColor: "rgba(239, 68, 68, 0.5)",
+    shadowColor: "rgba(239, 68, 68, 0.3)",
   },
   arInsightHeader: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 12,
   },
   arInsightIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
+    borderWidth: 1.5,
   },
   arInsightIconPositive: {
-    backgroundColor: "rgba(255, 255, 255, 0.22)",
-    borderColor: "rgba(255, 255, 255, 0.45)",
+    backgroundColor: "rgba(45, 211, 111, 0.25)",
+    borderColor: "rgba(45, 211, 111, 0.6)",
   },
   arInsightIconNegative: {
-    backgroundColor: "rgba(239, 68, 68, 0.22)",
-    borderColor: "rgba(239, 68, 68, 0.45)",
+    backgroundColor: "rgba(239, 68, 68, 0.25)",
+    borderColor: "rgba(239, 68, 68, 0.6)",
   },
   arInsightHeaderCopy: {
     flex: 1,
     gap: 2,
+    marginRight: 8,
   },
   arInsightTitle: {
     color: palette.textPrimary,
     fontSize: 16,
     fontWeight: "700",
+    lineHeight: 22,
   },
   arInsightSubtitle: {
     color: palette.textSecondary,
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 13,
+    lineHeight: 18,
   },
   arInsightStatus: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 16,
+    maxWidth: 105,
+    minWidth: 85,
   },
   arInsightStatusPositive: {
-    backgroundColor: "rgba(45, 211, 111, 0.22)",
+    backgroundColor: "rgba(45, 211, 111, 0.25)",
+    borderWidth: 1,
+    borderColor: "rgba(45, 211, 111, 0.4)",
   },
   arInsightStatusNegative: {
-    backgroundColor: "rgba(239, 68, 68, 0.22)",
+    backgroundColor: "rgba(239, 68, 68, 0.25)",
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.4)",
   },
   arInsightStatusText: {
     color: palette.textPrimary,
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: "700",
     textTransform: "uppercase",
+    letterSpacing: 0.3,
+    lineHeight: 14,
   },
   arInsightMetaRow: {
     flexDirection: "row",
     gap: 10,
+    flexWrap: "wrap",
   },
   arInsightMetaChip: {
     flexDirection: "row",
@@ -1238,9 +1503,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 16,
-    backgroundColor: "rgba(15, 23, 42, 0.7)",
+    backgroundColor: "rgba(15, 23, 42, 0.8)",
     borderWidth: 1,
-    borderColor: palette.glassBorder,
+    borderColor: "rgba(255, 255, 255, 0.1)",
   },
   arInsightMetaText: {
     color: palette.textPrimary,
@@ -1248,27 +1513,28 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   arInsightSection: {
-    gap: 6,
+    gap: 8,
+    paddingTop: 4,
   },
   arInsightSectionTitle: {
     color: palette.textPrimary,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "700",
   },
   arInsightSectionText: {
     color: palette.textSecondary,
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 13,
+    lineHeight: 20,
   },
   arInsightAction: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    padding: 12,
+    padding: 14,
     borderRadius: 18,
-    backgroundColor: "rgba(15, 23, 42, 0.78)",
+    backgroundColor: "rgba(15, 23, 42, 0.85)",
     borderWidth: 1,
-    borderColor: palette.glassBorder,
+    borderColor: "rgba(255, 255, 255, 0.15)",
   },
   arInsightActionCopy: {
     flex: 1,
@@ -1276,19 +1542,19 @@ const styles = StyleSheet.create({
   },
   arInsightActionTitle: {
     color: palette.textPrimary,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "700",
   },
   arInsightActionSubtitle: {
     color: palette.textSecondary,
-    fontSize: 11,
-    lineHeight: 16,
+    fontSize: 12,
+    lineHeight: 18,
   },
   confidenceBadge: {
     position: "absolute",
     top: -32,
     left: 0,
-    backgroundColor: palette.card,
+    backgroundColor: "rgba(15, 23, 42, 0.9)",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 14,
@@ -1310,15 +1576,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 16,
-    borderWidth: 1,
+    borderWidth: 1.5,
   },
   recycleFlagPositive: {
-    backgroundColor: "rgba(255, 255, 255, 0.28)",
-    borderColor: "rgba(255, 255, 255, 0.5)",
+    backgroundColor: "rgba(45, 211, 111, 0.3)",
+    borderColor: "rgba(45, 211, 111, 0.6)",
   },
   recycleFlagNegative: {
-    backgroundColor: "rgba(239, 68, 68, 0.26)",
-    borderColor: "rgba(239, 68, 68, 0.48)",
+    backgroundColor: "rgba(239, 68, 68, 0.3)",
+    borderColor: "rgba(239, 68, 68, 0.6)",
   },
   recycleFlagText: {
     color: palette.textPrimary,
@@ -1332,7 +1598,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "rgba(15, 23, 42, 0.75)",
+    backgroundColor: "rgba(15, 23, 42, 0.85)",
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 16,
@@ -1345,7 +1611,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "rgba(15, 23, 42, 0.75)",
+    backgroundColor: "rgba(15, 23, 42, 0.85)",
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 16,
@@ -1360,12 +1626,13 @@ const styles = StyleSheet.create({
   bottomOverlay: {
     paddingHorizontal: 18,
     paddingBottom: 24,
+    zIndex: 5,
   },
   modelStatus: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    backgroundColor: "rgba(15, 23, 42, 0.78)",
+    backgroundColor: "rgba(15, 23, 42, 0.85)",
     borderRadius: 18,
     paddingHorizontal: 16,
     paddingVertical: 12,
@@ -1408,13 +1675,14 @@ const styles = StyleSheet.create({
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(1, 15, 9, 0.78)",
+    backgroundColor: "rgba(1, 15, 9, 0.85)",
     alignItems: "center",
     justifyContent: "center",
+    zIndex: 200,
   },
   loadingCard: {
     width: RETICLE_SIZE,
-    backgroundColor: palette.card,
+    backgroundColor: "rgba(15, 23, 42, 0.95)",
     borderRadius: 22,
     paddingVertical: 28,
     alignItems: "center",
@@ -1481,16 +1749,21 @@ const styles = StyleSheet.create({
   },
   resultSheet: {
     position: "absolute",
-    top: "50%",
-    left: "50%",
-    width: Math.min(width - 32, 400),
-    maxHeight: height - 100,
-    backgroundColor: palette.card,
+    top: 100, // Fixed positioning instead of percentage
+    left: 16,
+    right: 16,
+    maxHeight: height - 200,
+    backgroundColor: "rgba(15, 23, 42, 0.97)",
     borderRadius: 28,
     padding: 24,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: palette.glassBorder,
-    ...baseShadow,
+    shadowColor: "#000",
+    shadowOpacity: 0.5,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 20,
+    zIndex: 100,
   },
   resultContent: {
     gap: 18,
@@ -1542,11 +1815,11 @@ const styles = StyleSheet.create({
   },
   metricCard: {
     flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.6)",
+    backgroundColor: "rgba(15, 23, 42, 0.7)",
     borderRadius: 18,
     padding: 14,
     borderWidth: 1,
-    borderColor: palette.glassBorder,
+    borderColor: "rgba(255, 255, 255, 0.1)",
   },
   metricLabel: {
     color: palette.textSecondary,
@@ -1564,17 +1837,20 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   instructionsCard: {
-    backgroundColor: "rgba(15, 23, 42, 0.65)",
+    backgroundColor: "rgba(15, 23, 42, 0.75)",
     borderRadius: 20,
-    padding: 18,
+    padding: 12,
     borderWidth: 1,
-    borderColor: palette.glassBorder,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    gap: 6,
+    alignSelf: "center",
+    width: "90%",
+    maxWidth: 350,
   },
   instructionsTitle: {
     color: palette.textPrimary,
     fontSize: 15,
     fontWeight: "700",
-    marginBottom: 8,
   },
   instructionsText: {
     color: palette.textSecondary,
@@ -1586,11 +1862,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    backgroundColor: "rgba(15, 23, 42, 0.65)",
+    backgroundColor: "rgba(15, 23, 42, 0.75)",
     borderRadius: 20,
     padding: 16,
     borderWidth: 1,
-    borderColor: palette.glassBorder,
+    borderColor: "rgba(255, 255, 255, 0.12)",
   },
   centerIconWrapper: {
     width: 44,
@@ -1624,6 +1900,8 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    alignSelf: "center",
+    maxWidth: 300,
   },
   storageText: {
     color: palette.accent,
@@ -1654,6 +1932,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    zIndex: 10,
   },
   captureBarHidden: {
     opacity: 0,
@@ -1663,7 +1942,7 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: "rgba(15, 23, 42, 0.86)",
+    backgroundColor: "rgba(15, 23, 42, 0.9)",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -1689,6 +1968,137 @@ const styles = StyleSheet.create({
     backgroundColor: palette.accent,
     alignItems: "center",
     justifyContent: "center",
+  },
+
+  // AR Bounding Box Styles
+  arBoundingBoxContainer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 5,
+  },
+  arBoundingBox: {
+    position: "absolute",
+    borderWidth: 3,
+    borderRadius: 8,
+    backgroundColor: "transparent",
+  },
+
+  // AR Corner Markers
+  arCornerMarker: {
+    position: "absolute",
+    width: 24,
+    height: 24,
+  },
+  arCornerTL: {},
+  arCornerTR: {},
+  arCornerBL: {},
+  arCornerBR: {},
+  arCornerLine: {
+    position: "absolute",
+    borderWidth: 2,
+  },
+  arCornerHorizontal: {
+    width: 16,
+    height: 0,
+    top: 12,
+  },
+  arCornerVertical: {
+    width: 0,
+    height: 16,
+    left: 12,
+  },
+
+  // AR Floating Label
+  arFloatingLabel: {
+    position: "absolute",
+    alignItems: "center",
+    zIndex: 6,
+  },
+  arLabelBubble: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: "rgba(255, 255, 255, 0.3)",
+    minWidth: 48,
+    alignItems: "center",
+  },
+  arLabelText: {
+    color: "white",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  arLabelArrow: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 8,
+    borderRightWidth: 8,
+    borderTopWidth: 8,
+    borderLeftColor: "transparent",
+    borderRightColor: "transparent",
+    marginTop: -1,
+  },
+
+  // AR Status Indicators
+  arStatusIndicator: {
+    position: "absolute",
+    zIndex: 7,
+  },
+  arStatusIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "rgba(255, 255, 255, 0.4)",
+  },
+  arStatusSuccess: {
+    backgroundColor: "rgba(45, 211, 111, 0.9)",
+    borderColor: "rgba(45, 211, 111, 1)",
+  },
+  arStatusError: {
+    backgroundColor: "rgba(239, 68, 68, 0.9)",
+    borderColor: "rgba(239, 68, 68, 1)",
+  },
+
+  // AR Guidance Arrows
+  arGuidanceArrow: {
+    position: "absolute",
+    flexDirection: "column",
+    alignItems: "center",
+    zIndex: 10,
+  },
+  arArrowBubble: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(15, 23, 42, 0.95)",
+    borderWidth: 2,
+    borderColor: "rgba(255, 255, 255, 0.3)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+  arArrowText: {
+    alignItems: "center",
+    backgroundColor: "rgba(15, 23, 42, 0.9)",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+  },
+  arArrowLabel: {
+    color: palette.textPrimary,
+    fontSize: 11,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  arArrowHint: {
+    color: palette.textSecondary,
+    fontSize: 9,
+    textAlign: "center",
+    marginTop: 2,
   },
 });
 
